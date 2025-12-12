@@ -8,43 +8,86 @@ import TestChatTab from './components/chat/TestChatTab'
 import TriggerTab from './components/forms/TriggerTab'
 import ConversationsTab from './components/conversations/ConversationsTab'
 import ResultsTab from './components/conversations/ResultsTab'
+import LoginPage from './LoginPage'
 
 const API_BASE = window.location.origin.replace('/admin', '') || 'http://localhost:8000'
 
-// DEV MODE: Bypass authentication for development
-const DEV_MODE = true // Set to false in production
+// Helper function to check if we're on the login page
+const isOnLoginPage = () => {
+  const path = window.location.pathname
+  return (
+    path.includes('login.html') || 
+    path.endsWith('/login') || 
+    path === '/login' ||
+    path === '/admin/login' ||
+    path.includes('/login')
+  )
+}
+
+// Helper function to get the correct login path
+const getLoginPath = () => {
+  const path = window.location.pathname
+  const origin = window.location.origin
+  const port = window.location.port
+  
+  // In Vite dev (port 3000), paths work differently
+  if (port === '3000' || origin.includes(':3000')) {
+    // Vite dev server - use simple path
+    return '/admin/login.html'
+  }
+  
+  // Production or FastAPI served - use relative path
+  if (path.includes('/admin') || path.startsWith('/admin')) {
+    return '/admin/login.html'
+  }
+  
+  // Default
+  return '/admin/login.html'
+}
 
 function App() {
   const [activeTab, setActiveTab] = useState('test')
-  const [authenticated, setAuthenticated] = useState(DEV_MODE) // Auto-authenticate in dev
-  const [authChecked, setAuthChecked] = useState(DEV_MODE) // Skip check in dev
+  const [authenticated, setAuthenticated] = useState(false)
+  const [authChecked, setAuthChecked] = useState(false)
   const checkingAuth = useRef(false)
+  const redirectAttempted = useRef(false)
+
+  // If on login page, render LoginPage component directly
+  // This handles the case where Vite serves index.html for all routes in dev mode
+  if (isOnLoginPage()) {
+    return <LoginPage />
+  }
 
   useEffect(() => {
     initTheme()
     
-    // In dev mode, skip all auth checks
-    if (DEV_MODE) {
-      console.log('[DEV MODE] Authentication bypassed')
-      return
-    }
-    
-    // Skip auth check if we're on the login page
-    if (!window.location.pathname.includes('login.html')) {
-      checkAuth()
-    } else {
-      setAuthChecked(true)
-    }
+    // Check auth for main dashboard
+    checkAuth()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Redirect to login if not authenticated after check
   useEffect(() => {
-    // Skip redirect in dev mode
-    if (DEV_MODE) return
-    
-    if (authChecked && !authenticated && !window.location.pathname.includes('login.html')) {
-      window.location.replace('/admin/login.html')
+    if (authChecked && !authenticated && !redirectAttempted.current) {
+      const currentPath = window.location.pathname
+      
+      console.log('[Auth] Not authenticated, redirecting to login...', { 
+        authChecked, 
+        authenticated, 
+        currentPath
+      })
+      
+      redirectAttempted.current = true
+      const loginPath = getLoginPath()
+      
+      // Immediate redirect
+      try {
+        window.location.replace(loginPath)
+        console.log('[Auth] Redirected to:', loginPath)
+      } catch (error) {
+        console.error('[Auth] Redirect failed:', error)
+        window.location.href = loginPath
+      }
     }
   }, [authChecked, authenticated])
 
@@ -72,9 +115,11 @@ function App() {
       checkingAuth.current = false
       
       if (response.ok) {
+        console.log('[Auth] Authentication successful')
         setAuthenticated(true)
       } else {
-        // Not authenticated - the useEffect will handle redirect
+        // Not authenticated - set to false, redirect will happen via useEffect
+        console.log('[Auth] Not authenticated, response status:', response.status, 'Will redirect...')
         setAuthenticated(false)
       }
     } catch (error) {
@@ -91,7 +136,7 @@ function App() {
       setAuthenticated(true) // Temporarily allow access for testing
       
       // Only show error toast once if we're not already on login page
-      if (!window.location.pathname.includes('login.html')) {
+      if (!isOnLoginPage()) {
         // Show user-friendly error but don't spam toasts
         setTimeout(() => {
           toast.error('Running in offline mode. Some features may not work. Please ensure the backend is running for full functionality.', {
@@ -110,11 +155,13 @@ function App() {
       })
       
       if (response.ok || response.status === 401) {
-        window.location.href = '/admin/login.html'
+        const loginPath = getLoginPath()
+        window.location.href = loginPath
       }
     } catch (error) {
       console.error('Logout error:', error)
-      window.location.href = '/admin/login.html'
+      const loginPath = getLoginPath()
+      window.location.href = loginPath
     }
   }
 
@@ -141,11 +188,30 @@ function App() {
   }
 
   if (!authenticated && authChecked) {
+    const loginPath = getLoginPath()
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-muted-foreground mb-4">Not authenticated.</p>
-          <p className="text-sm text-muted-foreground">Redirecting to login...</p>
+        <div className="text-center space-y-4 max-w-md">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="space-y-4"
+          >
+            <p className="text-muted-foreground mb-2 text-lg font-medium">Not authenticated.</p>
+            <p className="text-sm text-muted-foreground mb-4">
+              Redirecting to login...
+            </p>
+            <a 
+              href={loginPath}
+              className="text-primary hover:underline inline-block px-4 py-2 border border-primary rounded-md hover:bg-primary/10 transition-colors"
+              onClick={(e) => {
+                e.preventDefault()
+                window.location.href = loginPath
+              }}
+            >
+              Click here if you're not redirected automatically
+            </a>
+          </motion.div>
         </div>
       </div>
     )

@@ -46,5 +46,10 @@ export default defineConfig({
       usePolling: false
     }
   },
+  // Ensure login.html is accessible
+  preview: {
+    port: 3000,
+    open: true
+  },
   publicDir: false
 });
