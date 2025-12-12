@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - SMS Bot Admin</title>
+    <link rel="stylesheet" href="/admin/styles.css">
+    <style>
+        .login-container {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: var(--bg-primary);
+        }
+        
+        .login-card {
+            width: 100%;
+            max-width: 420px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            padding: 40px;
+            border-radius: 20px;
+            border: 1px solid var(--glass-border);
+            box-shadow: var(--glass-shadow);
+        }
+        
+        .login-header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+        
+        .login-header h1 {
+            font-size: 2em;
+            margin-bottom: 8px;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .login-header p {
+            color: var(--text-secondary);
+            font-size: 0.95em;
+        }
+        
+        .login-form .form-group {
+            margin-bottom: 24px;
+        }
+        
+        .login-form label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 14px;
+        }
+        
+        .login-form input {
+            width: 100%;
+            padding: 14px 16px;
+            border: 2px solid var(--border-color);
+            border-radius: 10px;
+            font-size: 15px;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            transition: all 0.3s ease;
+        }
+        
+        .login-form input:focus {
+            outline: none;
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .login-form button {
+            width: 100%;
+            padding: 14px;
+            margin-top: 8px;
+        }
+        
+        .error-message {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--error-color);
+            padding: 12px 16px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            display: none;
+        }
+        
+        .error-message.show {
+            display: block;
+            animation: slideIn 0.3s ease;
+        }
+        
+        .login-footer {
+            text-align: center;
+            margin-top: 24px;
+            color: var(--text-tertiary);
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-header">
+                <h1>📱 SMS Bot Admin</h1>
+                <p>Oakton Community College</p>
+            </div>
+            
+            <div class="error-message" id="error-message"></div>
+            
+            <form class="login-form" id="login-form" onsubmit="handleLogin(event)">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input 
+                        type="text" 
+                        id="username" 
+                        name="username" 
+                        required 
+                        autocomplete="username"
+                        autofocus
+                    >
+                </div>
+                
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input 
+                        type="password" 
+                        id="password" 
+                        name="password" 
+                        required
+                        autocomplete="current-password"
+                    >
+                </div>
+                
+                <button type="submit" class="btn btn-primary" id="login-button">
+                    Login
+                </button>
+            </form>
+            
+            <div class="login-footer">
+                <p>Authorized access only</p>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Get API base URL
+        const API_BASE = window.location.origin.replace('/admin', '') || 'http://localhost:8000';
+        
+        // Initialize theme
+        function initTheme() {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        }
+        initTheme();
+        
+        // Handle login form submission
+        async function handleLogin(event) {
+            event.preventDefault();
+            
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const errorDiv = document.getElementById('error-message');
+            const loginButton = document.getElementById('login-button');
+            
+            // Hide error
+            errorDiv.classList.remove('show');
+            errorDiv.textContent = '';
+            
+            // Disable button
+            loginButton.disabled = true;
+            loginButton.textContent = 'Logging in...';
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({ username, password })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    // Success - redirect to dashboard
+                    window.location.href = '/admin/';
+                } else {
+                    // Show error
+                    errorDiv.textContent = data.detail || 'Login failed. Please check your credentials.';
+                    errorDiv.classList.add('show');
+                    loginButton.disabled = false;
+                    loginButton.textContent = 'Login';
+                }
+            } catch (error) {
+                errorDiv.textContent = `Error: ${error.message}. Please try again.`;
+                errorDiv.classList.add('show');
+                loginButton.disabled = false;
+                loginButton.textContent = 'Login';
+            }
+        }
+        
+        // Allow Enter key to submit
+        document.getElementById('password').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                handleLogin(e);
+            }
+        });
+    </script>
+</body>
+</html>

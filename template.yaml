@@ -1,0 +1,226 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: SMS Bot for Oakton Community College
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: python3.11
+    Environment:
+      Variables:
+        OPENAI_API_KEY: !Ref OpenAIApiKey
+        PINECONE_API_KEY: !Ref PineconeApiKey
+        PINECONE_INDEX_NAME: !Ref PineconeIndexName
+        TELNYX_API_KEY: !Ref TelnyxApiKey
+        TELNYX_PHONE_NUMBER: !Ref TelnyxPhoneNumber
+        DYNAMODB_CONVERSATIONS_TABLE: smsbot-conversations
+        DYNAMODB_TRIGGERS_TABLE: smsbot-triggers
+        DYNAMODB_RESULTS_TABLE: smsbot-results
+        AWS_REGION: !Ref AWS::Region
+
+Parameters:
+  OpenAIApiKey:
+    Type: String
+    NoEcho: true
+    Description: OpenAI API Key
+  PineconeApiKey:
+    Type: String
+    NoEcho: true
+    Description: Pinecone API Key
+  PineconeIndexName:
+    Type: String
+    Default: oakton-knowledge-base
+    Description: Pinecone index name
+  TelnyxApiKey:
+    Type: String
+    NoEcho: true
+    Description: Telnyx API Key
+  TelnyxPhoneNumber:
+    Type: String
+    Description: Telnyx phone number (e.g., +1234567890)
+
+Resources:
+  # DynamoDB Tables
+  ConversationsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: smsbot-conversations
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: conversation_id
+          AttributeType: S
+        - AttributeName: phone_number
+          AttributeType: S
+        - AttributeName: created_at
+          AttributeType: S
+      KeySchema:
+        - AttributeName: conversation_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: PhoneNumberIndex
+          KeySchema:
+            - AttributeName: phone_number
+              KeyType: HASH
+            - AttributeName: created_at
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  TriggersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: smsbot-triggers
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: trigger_id
+          AttributeType: S
+        - AttributeName: phone_number
+          AttributeType: S
+      KeySchema:
+        - AttributeName: trigger_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: PhoneNumberIndex
+          KeySchema:
+            - AttributeName: phone_number
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  ResultsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: smsbot-results
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: result_id
+          AttributeType: S
+        - AttributeName: conversation_id
+          AttributeType: S
+        - AttributeName: created_at
+          AttributeType: S
+      KeySchema:
+        - AttributeName: result_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: ConversationIndex
+          KeySchema:
+            - AttributeName: conversation_id
+              KeyType: HASH
+            - AttributeName: created_at
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  # Phase 2: Additional tables
+  StudentsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: smsbot-students
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: phone_number
+          AttributeType: S
+      KeySchema:
+        - AttributeName: phone_number
+          KeyType: HASH
+
+  DeadlinesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: smsbot-deadlines
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: deadline_id
+          AttributeType: S
+        - AttributeName: category
+          AttributeType: S
+        - AttributeName: date
+          AttributeType: S
+      KeySchema:
+        - AttributeName: deadline_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: CategoryIndex
+          KeySchema:
+            - AttributeName: category
+              KeyType: HASH
+            - AttributeName: date
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  FollowupsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: smsbot-followups
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: followup_id
+          AttributeType: S
+        - AttributeName: phone_number
+          AttributeType: S
+        - AttributeName: followup_date
+          AttributeType: S
+        - AttributeName: status
+          AttributeType: S
+      KeySchema:
+        - AttributeName: followup_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: PhoneNumberIndex
+          KeySchema:
+            - AttributeName: phone_number
+              KeyType: HASH
+            - AttributeName: followup_date
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: StatusDateIndex
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+            - AttributeName: followup_date
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  # API Gateway (auto-generated by SAM from Lambda events)
+
+  # Lambda Function - Main API Handler (using Mangum to wrap FastAPI)
+  ApiHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: smsbot-api-handler
+      CodeUri: src/
+      Handler: api.main.handler
+      Events:
+        ApiRoot:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /{proxy+}
+            Method: ANY
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ConversationsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TriggersTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ResultsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref StudentsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DeadlinesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref FollowupsTable
+
+Outputs:
+  ApiUrl:
+    Description: API Gateway endpoint URL
+    Value: !Sub https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/
+  WebhookUrl:
+    Description: Telnyx webhook URL (configure this in Telnyx dashboard)
+    Value: !Sub https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/api/sms/webhook
+

@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMS Bot Admin Dashboard</title>
+    <link rel="stylesheet" href="/admin/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-actions">
+                <button class="theme-toggle" onclick="toggleTheme()" id="theme-toggle" title="Toggle dark mode">🌓</button>
+                <button class="logout-btn" onclick="logout()" id="logout-btn" style="display: none;">Logout</button>
+            </div>
+            <h1>📱 SMS Bot Admin Dashboard</h1>
+            <p>Oakton Community College</p>
+        </header>
+
+        <nav class="tabs">
+            <button class="tab-button active" data-tab="test">Test Chat</button>
+            <button class="tab-button" data-tab="trigger">Trigger Conversation</button>
+            <button class="tab-button" data-tab="conversations">Conversations</button>
+            <button class="tab-button" data-tab="results">Results</button>
+        </nav>
+
+        <!-- Test Chat Tab -->
+        <div class="tab-content active" id="test-tab">
+            <div class="card">
+                <h2>💬 Test Chat Interface</h2>
+                <p>Test the bot's responses without sending SMS messages. This simulates a conversation.</p>
+                
+                <div id="chat-container">
+                    <div id="chat-messages"></div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="chat-input">Type your message:</label>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="text" id="chat-input" placeholder="Ask a question..." style="flex: 1;" onkeypress="if(event.key === 'Enter') sendTestMessage()">
+                        <button onclick="sendTestMessage()" class="btn btn-primary">Send</button>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label>💡 Sample Questions:</label>
+                    <div id="sample-questions" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-top: 12px;">
+                        <!-- Sample questions will be added by JavaScript -->
+                    </div>
+                    <button onclick="clearChat()" class="btn btn-secondary" style="margin-top: 16px;">Clear Chat</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Trigger Tab -->
+        <div class="tab-content" id="trigger-tab">
+            <div class="card">
+                <h2>Manual Trigger</h2>
+                <form id="trigger-form">
+                    <div class="form-group">
+                        <label for="phone-number">Phone Number (E.164 format)</label>
+                        <input type="text" id="phone-number" placeholder="+1234567890" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="trigger-type">Trigger Type</label>
+                        <select id="trigger-type" required>
+                            <optgroup label="Account Issues">
+                                <option value="overdue_balance">Overdue Balance</option>
+                                <option value="hold_on_account">Hold on Account</option>
+                            </optgroup>
+                            <optgroup label="Payment Reminders">
+                                <option value="payment_deadline_7days">Payment Deadline (7 days)</option>
+                                <option value="payment_deadline_3days">Payment Deadline (3 days)</option>
+                                <option value="payment_deadline_1day">Payment Deadline (1 day)</option>
+                            </optgroup>
+                            <optgroup label="Registration & Classes">
+                                <option value="not_registered">Not Registered</option>
+                                <option value="registration_opens">Registration Opens</option>
+                                <option value="class_starts_soon">Class Starts Soon</option>
+                                <option value="drop_deadline_warning">Drop Deadline Warning</option>
+                            </optgroup>
+                            <optgroup label="Financial Aid">
+                                <option value="financial_aid_deadline">Financial Aid Deadline</option>
+                            </optgroup>
+                            <optgroup label="Academic Support">
+                                <option value="advising_reminder">Advising Reminder</option>
+                                <option value="graduation_checklist">Graduation Checklist</option>
+                            </optgroup>
+                            <optgroup label="General">
+                                <option value="upcoming_deadline">Upcoming Deadline (Generic)</option>
+                            </optgroup>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Send Trigger</button>
+                </form>
+            </div>
+
+            <div class="card">
+                <h2>CSV Upload</h2>
+                <form id="csv-form">
+                    <div class="form-group">
+                        <label for="csv-file">CSV File</label>
+                        <input type="file" id="csv-file" accept=".csv" required>
+                        <small>Format: phone_number,metadata (JSON optional)</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="csv-trigger-type">Trigger Type</label>
+                        <select id="csv-trigger-type" required>
+                            <optgroup label="Account Issues">
+                                <option value="overdue_balance">Overdue Balance</option>
+                                <option value="hold_on_account">Hold on Account</option>
+                            </optgroup>
+                            <optgroup label="Payment Reminders">
+                                <option value="payment_deadline_7days">Payment Deadline (7 days)</option>
+                                <option value="payment_deadline_3days">Payment Deadline (3 days)</option>
+                                <option value="payment_deadline_1day">Payment Deadline (1 day)</option>
+                            </optgroup>
+                            <optgroup label="Registration & Classes">
+                                <option value="not_registered">Not Registered</option>
+                                <option value="registration_opens">Registration Opens</option>
+                                <option value="class_starts_soon">Class Starts Soon</option>
+                                <option value="drop_deadline_warning">Drop Deadline Warning</option>
+                            </optgroup>
+                            <optgroup label="Financial Aid">
+                                <option value="financial_aid_deadline">Financial Aid Deadline</option>
+                            </optgroup>
+                            <optgroup label="Academic Support">
+                                <option value="advising_reminder">Advising Reminder</option>
+                                <option value="graduation_checklist">Graduation Checklist</option>
+                            </optgroup>
+                            <optgroup label="General">
+                                <option value="upcoming_deadline">Upcoming Deadline (Generic)</option>
+                            </optgroup>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Upload & Send</button>
+                </form>
+            </div>
+
+            <div id="trigger-status" class="status-message"></div>
+        </div>
+
+        <!-- Conversations Tab -->
+        <div class="tab-content" id="conversations-tab">
+            <div class="card">
+                <h2>Recent Conversations</h2>
+                <button class="btn btn-secondary" onclick="loadConversations()">Refresh</button>
+                <div id="conversations-list"></div>
+            </div>
+
+            <div class="modal" id="conversation-modal">
+                <div class="modal-content">
+                    <span class="close" onclick="closeConversationModal()">&times;</span>
+                    <h2>Conversation Transcript</h2>
+                    <div id="conversation-detail"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Tab -->
+        <div class="tab-content" id="results-tab">
+            <div class="card">
+                <h2>Conversation Results</h2>
+                <button class="btn btn-secondary" onclick="loadResults()">Refresh</button>
+                <div id="results-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/admin/dashboard.js"></script>
+</body>
+</html>
+

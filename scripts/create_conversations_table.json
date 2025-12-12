@@ -1,0 +1,43 @@
+{
+  "TableName": "smsbot-conversations",
+  "AttributeDefinitions": [
+    {
+      "AttributeName": "conversation_id",
+      "AttributeType": "S"
+    },
+    {
+      "AttributeName": "phone_number",
+      "AttributeType": "S"
+    },
+    {
+      "AttributeName": "created_at",
+      "AttributeType": "S"
+    }
+  ],
+  "KeySchema": [
+    {
+      "AttributeName": "conversation_id",
+      "KeyType": "HASH"
+    }
+  ],
+  "BillingMode": "PAY_PER_REQUEST",
+  "GlobalSecondaryIndexes": [
+    {
+      "IndexName": "PhoneNumberIndex",
+      "KeySchema": [
+        {
+          "AttributeName": "phone_number",
+          "KeyType": "HASH"
+        },
+        {
+          "AttributeName": "created_at",
+          "KeyType": "RANGE"
+        }
+      ],
+      "Projection": {
+        "ProjectionType": "ALL"
+      }
+    }
+  ]
+}
+
