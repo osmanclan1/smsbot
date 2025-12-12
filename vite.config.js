@@ -6,22 +6,45 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// Determine which app to build/serve based on environment
+const APP_MODE = process.env.APP_MODE || 'admin' // 'admin' or 'student'
+
+const appConfig = {
+  admin: {
+    root: resolve(__dirname, 'admin/src'),
+    outDir: resolve(__dirname, 'admin/dist'),
+    alias: resolve(__dirname, 'admin/src'),
+    inputs: {
+      main: resolve(__dirname, 'admin/src/index.html'),
+      login: resolve(__dirname, 'admin/src/login.html')
+    }
+  },
+  student: {
+    root: resolve(__dirname, 'student/src'),
+    outDir: resolve(__dirname, 'student/dist'),
+    alias: resolve(__dirname, 'student/src'),
+    inputs: {
+      main: resolve(__dirname, 'student/src/index.html'),
+      login: resolve(__dirname, 'student/src/login.html')
+    }
+  }
+}
+
+const config = appConfig[APP_MODE]
+
 export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      "@": resolve(__dirname, "admin/src"),
+      "@": config.alias,
     },
   },
-  root: resolve(__dirname, 'admin/src'),
+  root: config.root,
   build: {
-    outDir: resolve(__dirname, 'admin/dist'),
+    outDir: config.outDir,
     emptyOutDir: true,
     rollupOptions: {
-      input: {
-        main: resolve(__dirname, 'admin/src/index.html'),
-        login: resolve(__dirname, 'admin/src/login.html')
-      }
+      input: config.inputs
     }
   },
   server: {

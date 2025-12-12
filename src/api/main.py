@@ -10,7 +10,7 @@ from starlette.middleware.sessions import SessionMiddleware
 import os
 import secrets
 
-from api.routes import sms, admin, trigger, auth
+from api.routes import sms, admin, trigger, auth, student_auth, student
 from api.middleware.auth import AuthMiddleware
 
 app = FastAPI(title="SMS Bot API", version="1.0.0")
@@ -40,6 +40,8 @@ app.add_middleware(AuthMiddleware)
 
 # Include routers
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(student_auth.router, prefix="/api/student/auth", tags=["student-auth"])
+app.include_router(student.router, prefix="/api/student", tags=["student"])
 app.include_router(sms.router, prefix="/api/sms", tags=["sms"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 app.include_router(trigger.router, prefix="/api/admin", tags=["trigger"])
@@ -133,6 +135,47 @@ elif os.path.exists(admin_src_path):
     except Exception as e:
         print(f"Warning: Could not mount admin dashboard: {e}")
         pass  # Skip if can't mount (e.g., in Lambda)
+
+
+# Serve student portal (for local development)
+student_dist_path = os.path.join(os.path.dirname(__file__), "..", "..", "student", "dist")
+student_src_path = os.path.join(os.path.dirname(__file__), "..", "..", "student", "src")
+
+# Check if dist exists (built files), otherwise fall back to src for dev
+if os.path.exists(student_dist_path):
+    try:
+        # Mount student dist directory (production build)
+        app.mount("/student", StaticFiles(directory=student_dist_path, html=True), name="student")
+        
+        @app.get("/student")
+        async def student_index():
+            """Serve student portal."""
+            return FileResponse(os.path.join(student_dist_path, "index.html"))
+            
+        @app.get("/student/login.html")
+        async def student_login():
+            """Serve student login page."""
+            return FileResponse(os.path.join(student_dist_path, "login.html"))
+    except Exception as e:
+        print(f"Warning: Could not mount student portal from dist: {e}")
+        pass
+elif os.path.exists(student_src_path):
+    try:
+        # Fallback to src directory (development)
+        app.mount("/student", StaticFiles(directory=student_src_path, html=True), name="student")
+        
+        @app.get("/student")
+        async def student_index():
+            """Serve student portal."""
+            return FileResponse(os.path.join(student_src_path, "index.html"))
+            
+        @app.get("/student/login.html")
+        async def student_login():
+            """Serve student login page."""
+            return FileResponse(os.path.join(student_src_path, "login.html"))
+    except Exception as e:
+        print(f"Warning: Could not mount student portal: {e}")
+        pass
 
 
 # Lambda handler using Mangum

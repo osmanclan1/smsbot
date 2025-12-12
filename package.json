@@ -1,12 +1,18 @@
 {
-  "name": "smsbot-admin",
+  "name": "smsbot-frontend",
   "version": "1.0.0",
-  "description": "Admin dashboard for SMS Bot",
+  "description": "Admin and Student dashboards for SMS Bot",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "dev": "APP_MODE=admin vite",
+    "dev:admin": "APP_MODE=admin vite",
+    "dev:student": "APP_MODE=student vite",
+    "build": "npm run build:admin && npm run build:student",
+    "build:admin": "APP_MODE=admin vite build",
+    "build:student": "APP_MODE=student vite build",
+    "preview": "vite preview",
+    "preview:admin": "APP_MODE=admin vite preview",
+    "preview:student": "APP_MODE=student vite preview"
   },
   "dependencies": {
     "react": "^18.2.0",

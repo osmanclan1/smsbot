@@ -276,6 +276,32 @@ class DynamoDBService:
                 return self._memory_store.get(conv_id)
         return None
     
+    def get_conversations_by_phone(self, phone_number: str, limit: int = 50) -> List[Dict]:
+        """Get all conversations for a phone number (or username for web students)."""
+        # Try DynamoDB first
+        if self.conversations_table:
+            try:
+                response = self.conversations_table.query(
+                    IndexName='PhoneNumberIndex',
+                    KeyConditionExpression=Key('phone_number').eq(phone_number),
+                    ScanIndexForward=False,  # Most recent first
+                    Limit=limit
+                )
+                return response.get('Items', [])
+            except Exception as e:
+                print(f"Error getting conversations by phone from DynamoDB: {e}, trying in-memory")
+        
+        # Fallback to in-memory storage
+        conversations = []
+        with self._memory_lock:
+            for conv_id, conv_data in self._memory_store.items():
+                if isinstance(conv_data, dict) and conv_data.get('phone_number') == phone_number:
+                    conversations.append(conv_data)
+        
+        # Sort by created_at (most recent first)
+        conversations.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+        return conversations[:limit]
+    
     def add_message(
         self,
         conversation_id: str,
@@ -733,6 +759,108 @@ class DynamoDBService:
             error_type = type(e).__name__
             if 'ResourceNotFound' not in error_type and 'ResourceNotFoundException' not in str(e):
                 print(f"Error getting student: {e}")
+            return None
+    
+    # Student Authentication methods
+    def create_student_account(
+        self,
+        username: str,
+        password: str,
+        email: Optional[str] = None,
+        name: Optional[str] = None
+    ) -> str:
+        """
+        Create a new student account with username/password.
+        Uses username-based authentication (stores username in phone_number field temporarily).
+        
+        Args:
+            username: Unique username
+            password: Plain text password (will be hashed)
+            email: Optional email
+            name: Optional name
+            
+        Returns:
+            Student ID (UUID)
+        """
+        if not self.students_table:
+            raise ValueError("Students table not initialized")
+        
+        try:
+            self.students_table.meta.client.describe_table(TableName=self.students_table_name)
+        except Exception as e:
+            error_type = type(e).__name__
+            if 'ResourceNotFound' in error_type or 'ResourceNotFoundException' in str(e):
+                raise ValueError("Students table does not exist in DynamoDB")
+            else:
+                raise
+        
+        # Hash password
+        try:
+            import bcrypt
+            password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        except ImportError:
+            password_hash = password  # Plain text for dev (not secure)
+        
+        timestamp = datetime.utcnow().isoformat()
+        student_id = str(uuid.uuid4())
+        
+        # Check if username already exists
+        existing = self.get_student_by_username(username)
+        if existing:
+            raise ValueError("Username already exists")
+        
+        # Store with username as identifier (using phone_number field as key since it's the PK)
+        # In production, consider adding a GSI on username
+        item = {
+            'phone_number': f"AUTH:{username}",  # Use phone_number field as key with prefix
+            'username': username,
+            'password_hash': password_hash,
+            'student_id': student_id,
+            'created_at': timestamp,
+            'updated_at': timestamp,
+            'account_type': 'authenticated'  # Flag to distinguish from phone-based accounts
+        }
+        
+        if email:
+            item['email'] = email
+        if name:
+            item['name'] = name
+        
+        self.students_table.put_item(Item=item)
+        return student_id
+    
+    def get_student_by_username(self, username: str) -> Optional[Dict]:
+        """Get student account by username."""
+        if not self.students_table:
+            return None
+        
+        try:
+            self.students_table.meta.client.describe_table(TableName=self.students_table_name)
+            
+            # Try direct lookup first (faster if username format is known)
+            try:
+                response = self.students_table.get_item(
+                    Key={'phone_number': f"AUTH:{username}"}
+                )
+                if 'Item' in response:
+                    return response['Item']
+            except:
+                pass
+            
+            # Fallback: scan for username (inefficient but works without GSI)
+            # TODO: Add GSI on username for better performance
+            response = self.students_table.scan(
+                FilterExpression='username = :username',
+                ExpressionAttributeValues={':username': username},
+                Limit=1
+            )
+            
+            items = response.get('Items', [])
+            return items[0] if items else None
+        except Exception as e:
+            error_type = type(e).__name__
+            if 'ResourceNotFound' not in error_type and 'ResourceNotFoundException' not in str(e):
+                print(f"Error getting student by username: {e}")
             return None
     
     def update_student_metadata(self, phone_number: str, metadata_updates: Dict) -> bool:
