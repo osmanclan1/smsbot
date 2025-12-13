@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { RefreshCw, MessageCircle, Bot, User, Phone, Clock, FileText } from 'lucide-react'
 import { toast } from 'sonner'
 
-const API_BASE = window.location.origin.replace('/admin', '') || 'http://localhost:8000'
+import { API_BASE } from '../../config/api'
 
 export default function ConversationsTab() {
   const [conversations, setConversations] = useState([])

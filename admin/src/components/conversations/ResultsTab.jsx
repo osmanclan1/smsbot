@@ -6,7 +6,7 @@ import { Badge } from '../ui/badge'
 import { RefreshCw, CheckCircle2, AlertCircle, Clock, TrendingUp, Info } from 'lucide-react'
 import { toast } from 'sonner'
 
-const API_BASE = window.location.origin.replace('/admin', '') || 'http://localhost:8000'
+import { API_BASE } from '../../config/api'
 
 const resultTypeConfig = {
   paid: { variant: 'default', icon: CheckCircle2, label: 'Paid', color: 'text-green-600 dark:text-green-400' },

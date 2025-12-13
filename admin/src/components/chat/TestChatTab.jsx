@@ -6,7 +6,7 @@ import { Button } from '../ui/button'
 import { MessageCircle, Send, Bot, User, Sparkles, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
-const API_BASE = window.location.origin.replace('/admin', '') || 'http://localhost:8000'
+import { API_BASE } from '../../config/api'
 const TEST_PHONE = '+15555551234'
 
 const sampleQuestions = [

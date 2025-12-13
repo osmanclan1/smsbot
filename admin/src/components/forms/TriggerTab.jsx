@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Send, Upload, Phone, Settings } from 'lucide-react'
 import { toast } from 'sonner'
 
-const API_BASE = window.location.origin.replace('/admin', '') || 'http://localhost:8000'
+import { API_BASE } from '../../config/api'
 
 const triggerOptions = [
   { group: 'Account Issues', options: [
