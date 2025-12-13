@@ -8,7 +8,7 @@
     "dev:admin": "APP_MODE=admin vite",
     "dev:student": "APP_MODE=student vite",
     "build": "npm run build:admin && npm run build:student",
-    "build:admin": "APP_MODE=admin vite build",
+    "build:admin": "APP_MODE=admin vite build --config vite.config.js",
     "build:student": "APP_MODE=student vite build",
     "preview": "vite preview",
     "preview:admin": "APP_MODE=admin vite preview",

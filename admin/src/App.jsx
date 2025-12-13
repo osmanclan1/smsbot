@@ -9,8 +9,7 @@ import TriggerTab from './components/forms/TriggerTab'
 import ConversationsTab from './components/conversations/ConversationsTab'
 import ResultsTab from './components/conversations/ResultsTab'
 import LoginPage from './LoginPage'
-
-const API_BASE = window.location.origin.replace('/admin', '') || 'http://localhost:8000'
+import { API_BASE } from './config/api'
 
 // Helper function to check if we're on the login page
 const isOnLoginPage = () => {
@@ -20,6 +19,7 @@ const isOnLoginPage = () => {
     path.endsWith('/login') || 
     path === '/login' ||
     path === '/admin/login' ||
+    path === '/admin/login/' ||
     path.includes('/login')
   )
 }
@@ -29,6 +29,11 @@ const getLoginPath = () => {
   const path = window.location.pathname
   const origin = window.location.origin
   const port = window.location.port
+  
+  // If deployed on Amplify, use simple paths
+  if (origin.includes('amplifyapp.com')) {
+    return '/login.html'
+  }
   
   // In Vite dev (port 3000), paths work differently
   if (port === '3000' || origin.includes(':3000')) {
@@ -42,7 +47,7 @@ const getLoginPath = () => {
   }
   
   // Default
-  return '/admin/login.html'
+  return '/login.html'
 }
 
 function App() {
@@ -78,7 +83,9 @@ function App() {
       })
       
       redirectAttempted.current = true
-      const loginPath = getLoginPath()
+      // For Amplify, use simple paths
+      const isAmplify = window.location.origin.includes('amplifyapp.com')
+      const loginPath = isAmplify ? '/login.html' : getLoginPath()
       
       // Immediate redirect
       try {
@@ -155,12 +162,14 @@ function App() {
       })
       
       if (response.ok || response.status === 401) {
-        const loginPath = getLoginPath()
+        const isAmplify = window.location.origin.includes('amplifyapp.com')
+        const loginPath = isAmplify ? '/login.html' : getLoginPath()
         window.location.href = loginPath
       }
     } catch (error) {
       console.error('Logout error:', error)
-      const loginPath = getLoginPath()
+      const isAmplify = window.location.origin.includes('amplifyapp.com')
+      const loginPath = isAmplify ? '/login.html' : getLoginPath()
       window.location.href = loginPath
     }
   }
@@ -188,7 +197,8 @@ function App() {
   }
 
   if (!authenticated && authChecked) {
-    const loginPath = getLoginPath()
+    const isAmplify = window.location.origin.includes('amplifyapp.com')
+    const loginPath = isAmplify ? '/login.html' : getLoginPath()
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center space-y-4 max-w-md">

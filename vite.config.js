@@ -1,36 +1,71 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { resolve } from 'path';
+import { existsSync, readdirSync } from 'fs';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+// Determine project root - Vercel uses process.cwd(), local uses different paths
+const getProjectRoot = () => {
+  const cwd = process.cwd();
+  
+  // List of possible root directories to check
+  const possibleRoots = [
+    cwd, // Vercel uses this as working directory
+    resolve(cwd), // Absolute path of cwd
+  ];
+  
+  // Debug: log what we're checking
+  console.log('Looking for admin/src/index.html...');
+  console.log('Current working directory:', cwd);
+  
+  for (const root of possibleRoots) {
+    const testPath = resolve(root, 'admin/src/index.html');
+    console.log(`Checking: ${testPath}`);
+    if (existsSync(testPath)) {
+      console.log(`✅ Found project root: ${root}`);
+      return root;
+    }
+  }
+  
+  // If not found, show debug info
+  console.error('❌ Could not find admin/src/index.html');
+  console.error('Current directory contents:', readdirSync(cwd).join(', '));
+  if (existsSync(resolve(cwd, 'admin'))) {
+    console.error('admin/ exists, contents:', readdirSync(resolve(cwd, 'admin')).join(', '));
+  }
+  if (existsSync(resolve(cwd, 'admin/src'))) {
+    console.error('admin/src/ exists, contents:', readdirSync(resolve(cwd, 'admin/src')).join(', '));
+  }
+  
+  throw new Error(`Cannot find admin/src/index.html in ${cwd}. Files available: ${readdirSync(cwd).join(', ')}`);
+};
+
+const projectRoot = getProjectRoot();
 
 // Determine which app to build/serve based on environment
-const APP_MODE = process.env.APP_MODE || 'admin' // 'admin' or 'student'
+const APP_MODE = process.env.APP_MODE || 'admin';
 
 const appConfig = {
   admin: {
-    root: resolve(__dirname, 'admin/src'),
-    outDir: resolve(__dirname, 'admin/dist'),
-    alias: resolve(__dirname, 'admin/src'),
+    root: resolve(projectRoot, 'admin/src'),
+    outDir: resolve(projectRoot, 'admin/dist'),
+    alias: resolve(projectRoot, 'admin/src'),
     inputs: {
-      main: resolve(__dirname, 'admin/src/index.html'),
-      login: resolve(__dirname, 'admin/src/login.html')
+      main: resolve(projectRoot, 'admin/src/index.html'),
+      login: resolve(projectRoot, 'admin/src/login.html')
     }
   },
   student: {
-    root: resolve(__dirname, 'student/src'),
-    outDir: resolve(__dirname, 'student/dist'),
-    alias: resolve(__dirname, 'student/src'),
+    root: resolve(projectRoot, 'student/src'),
+    outDir: resolve(projectRoot, 'student/dist'),
+    alias: resolve(projectRoot, 'student/src'),
     inputs: {
-      main: resolve(__dirname, 'student/src/index.html'),
-      login: resolve(__dirname, 'student/src/login.html')
+      main: resolve(projectRoot, 'student/src/index.html'),
+      login: resolve(projectRoot, 'student/src/login.html')
     }
   }
-}
+};
 
-const config = appConfig[APP_MODE]
+const config = appConfig[APP_MODE];
 
 export default defineConfig({
   plugins: [react()],
@@ -69,7 +104,6 @@ export default defineConfig({
       usePolling: false
     }
   },
-  // Ensure login.html is accessible
   preview: {
     port: 3000,
     open: true

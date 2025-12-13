@@ -7,7 +7,7 @@ import { MessageSquare, LogIn, Lock, User as UserIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { Toaster } from './components/ui/toast'
 
-const API_BASE = window.location.origin.replace('/admin', '') || 'http://localhost:8000'
+import { API_BASE } from './config/api'
 
 export default function LoginPage() {
   const [username, setUsername] = useState('')
@@ -36,15 +36,27 @@ export default function LoginPage() {
         body: JSON.stringify({ username, password })
       })
 
+      // Check if response is JSON before parsing
+      const contentType = response.headers.get('content-type')
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text()
+        console.error('Non-JSON response:', text.substring(0, 200))
+        toast.error('Server error: Received non-JSON response. Please check the API endpoint.')
+        return
+      }
+
       const data = await response.json()
 
       if (response.ok) {
         toast.success('Login successful!')
-        window.location.href = '/admin/'
+        // Handle Amplify vs other deployments
+        const isAmplify = window.location.origin.includes('amplifyapp.com')
+        window.location.href = isAmplify ? '/' : '/admin/'
       } else {
         toast.error(data.detail || 'Login failed. Please check your credentials.')
       }
     } catch (error) {
+      console.error('Login error:', error)
       toast.error(`Error: ${error.message}. Please try again.`)
     } finally {
       setLoading(false)
