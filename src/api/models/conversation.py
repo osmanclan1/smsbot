@@ -11,6 +11,7 @@ class Message(BaseModel):
     role: str
     content: str
     timestamp: str
+    channel: Optional[str] = None  # 'sms' or 'voice'
 
 
 class ConversationResponse(BaseModel):
@@ -23,6 +24,7 @@ class ConversationResponse(BaseModel):
     messages: List[Message]
     trigger_type: Optional[str] = None
     trigger_id: Optional[str] = None
+    channel: Optional[str] = None  # 'sms', 'voice', or 'both'
 
 
 class ConversationListResponse(BaseModel):

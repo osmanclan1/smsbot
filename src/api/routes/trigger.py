@@ -10,7 +10,9 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from api.services.sms_service import SMSService
+from api.services.voice_service import VoiceService
 from api.services.conversation import ConversationEngine
+from api.services.trigger_arbitration import should_send_trigger
 from storage.dynamodb import DynamoDBService
 from api.models.trigger import TriggerRequest, TriggerResponse, CSVUploadResponse
 
@@ -26,6 +28,7 @@ def handle_trigger(event, context):
         phone_number = body.get('phone_number')
         trigger_type = body.get('trigger_type')
         metadata = body.get('metadata', {})
+        channel = body.get('channel', 'sms')  # Default to SMS
         
         if not phone_number or not trigger_type:
             return {
@@ -36,6 +39,7 @@ def handle_trigger(event, context):
         db = DynamoDBService()
         engine = ConversationEngine()
         sms_service = SMSService()
+        voice_service = VoiceService()
         
         # Create trigger record
         trigger_id = db.create_trigger(phone_number, trigger_type, metadata)
@@ -43,27 +47,58 @@ def handle_trigger(event, context):
         # Get initial message
         initial_message = engine.get_initial_message(trigger_type)
         
-        # Create conversation
+        # Create conversation with specified channel
         conversation_id = db.create_conversation(
             phone_number=phone_number,
             trigger_type=trigger_type,
             trigger_id=trigger_id,
-            initial_message=initial_message
+            initial_message=initial_message,
+            channel=channel
         )
         
         # Update trigger with conversation ID
         db.update_trigger_status(trigger_id, 'sent', conversation_id)
         
-        # Send initial message
-        send_result = sms_service.send_sms(phone_number, initial_message)
+        # Send via SMS or Voice based on channel
+        message_sent = False
+        message_id = None
+        call_id = None
+        error = None
+        
+        if channel == 'voice':
+            # Initiate voice call
+            conversation_context = {
+                'conversation_id': conversation_id,
+                'trigger_type': trigger_type,
+                'initial_message': initial_message
+            }
+            call_result = voice_service.initiate_call(
+                to_phone=phone_number,
+                conversation_context=conversation_context
+            )
+            message_sent = call_result.get('success', False)
+            call_id = call_result.get('call_id')
+            if not message_sent:
+                error = call_result.get('error', 'Unknown error')
+        else:
+            # Send SMS
+            send_result = sms_service.send_sms(phone_number, initial_message)
+            message_sent = send_result.get('success', False)
+            message_id = send_result.get('message_id')
+            if not message_sent:
+                error = send_result.get('error', 'Unknown error')
         
         return {
             'statusCode': 200,
             'body': json.dumps({
                 'trigger_id': trigger_id,
                 'conversation_id': conversation_id,
-                'message_sent': send_result.get('success', False),
-                'status': 'sent'
+                'message_sent': message_sent,
+                'status': 'sent',
+                'message_id': message_id,
+                'call_id': call_id,
+                'channel': channel,
+                'error': error
             })
         }
     except Exception as e:
@@ -79,6 +114,27 @@ async def trigger_conversation(request: TriggerRequest):
     Manually trigger a conversation with a student.
     """
     try:
+        # Check trigger arbitration (cooldowns, priority, suppression)
+        should_send, reason = should_send_trigger(
+            phone_number=request.phone_number,
+            trigger_type=request.trigger_type,
+            metadata=request.metadata
+        )
+        
+        if not should_send:
+            # Return response indicating trigger was suppressed
+            return TriggerResponse(
+                trigger_id="",  # No trigger created
+                conversation_id="",  # No conversation created
+                message_sent=False,
+                status='suppressed',
+                message_id=None,
+                sms_error=reason,
+                call_id=None,
+                voice_error=None,
+                channel=request.channel or 'sms'
+            )
+        
         db = DynamoDBService()
         engine = ConversationEngine()
         sms_service = SMSService()
@@ -116,12 +172,16 @@ async def trigger_conversation(request: TriggerRequest):
         # Get initial message
         initial_message = engine.get_initial_message(request.trigger_type)
         
+        # Determine channel (default to SMS if not specified)
+        channel = request.channel or 'sms'
+        
         # Create conversation
         conversation_id = db.create_conversation(
             phone_number=request.phone_number,
             trigger_type=request.trigger_type,
             trigger_id=trigger_id,
-            initial_message=initial_message
+            initial_message=initial_message,
+            channel=channel
         )
         
         # Phase 2: Schedule follow-up if appropriate (e.g., 3 days for payment reminders)
@@ -150,14 +210,49 @@ async def trigger_conversation(request: TriggerRequest):
         # Update trigger with conversation ID
         db.update_trigger_status(trigger_id, 'sent', conversation_id)
         
-        # Send initial message
-        send_result = sms_service.send_sms(request.phone_number, initial_message)
+        # Send via SMS or Voice based on channel
+        message_sent = False
+        message_id = None
+        sms_error = None
+        call_id = None
+        voice_error = None
+        
+        if channel == 'voice':
+            # Initiate voice call
+            voice_service = VoiceService()
+            conversation_context = {
+                'conversation_id': conversation_id,
+                'trigger_type': request.trigger_type,
+                'initial_message': initial_message
+            }
+            call_result = voice_service.initiate_call(
+                to_phone=request.phone_number,
+                conversation_context=conversation_context
+            )
+            message_sent = call_result.get('success', False)
+            call_id = call_result.get('call_id')
+            if not message_sent:
+                voice_error = call_result.get('error', 'Unknown error')
+                print(f"Failed to initiate voice call to {request.phone_number}: {voice_error}")
+        else:
+            # Send SMS (phone number normalization handled by SMSService)
+            send_result = sms_service.send_sms(request.phone_number, initial_message)
+            message_sent = send_result.get('success', False)
+            message_id = send_result.get('message_id')
+            if not message_sent:
+                sms_error = send_result.get('error', 'Unknown error')
+                print(f"Failed to send SMS to {request.phone_number}: {sms_error}")
         
         return TriggerResponse(
             trigger_id=trigger_id,
             conversation_id=conversation_id,
-            message_sent=send_result.get('success', False),
-            status='sent'
+            message_sent=message_sent,
+            status='sent',
+            message_id=message_id,
+            sms_error=sms_error,
+            call_id=call_id,
+            voice_error=voice_error,
+            channel=channel
         )
         
     except Exception as e:
@@ -167,7 +262,8 @@ async def trigger_conversation(request: TriggerRequest):
 @router.post("/trigger/csv", response_model=CSVUploadResponse)
 async def trigger_csv_upload(
     file: UploadFile = File(...),
-    trigger_type: str = Form(...)
+    trigger_type: str = Form(...),
+    channel: str = Form('sms')
 ):
     """
     Upload CSV file to trigger multiple conversations.
@@ -186,6 +282,7 @@ async def trigger_csv_upload(
         db = DynamoDBService()
         engine = ConversationEngine()
         sms_service = SMSService()
+        voice_service = VoiceService()
         
         trigger_ids = []
         successful = 0
@@ -245,7 +342,8 @@ async def trigger_csv_upload(
                     phone_number=phone_number,
                     trigger_type=trigger_type,
                     trigger_id=trigger_id,
-                    initial_message=initial_message
+                    initial_message=initial_message,
+                    channel=channel
                 )
                 
                 # Phase 2: Schedule follow-up if appropriate
@@ -274,13 +372,30 @@ async def trigger_csv_upload(
                 # Update trigger
                 db.update_trigger_status(trigger_id, 'sent', conversation_id)
                 
-                # Send message
-                send_result = sms_service.send_sms(phone_number, initial_message)
-                
-                if send_result.get('success'):
-                    successful += 1
+                # Send via SMS or Voice based on channel
+                if channel == 'voice':
+                    conversation_context = {
+                        'conversation_id': conversation_id,
+                        'trigger_type': trigger_type,
+                        'initial_message': initial_message
+                    }
+                    call_result = voice_service.initiate_call(
+                        to_phone=phone_number,
+                        conversation_context=conversation_context
+                    )
+                    if call_result.get('success'):
+                        successful += 1
+                    else:
+                        failed += 1
+                        print(f"Failed to initiate voice call to {phone_number}: {call_result.get('error', 'Unknown error')}")
                 else:
-                    failed += 1
+                    # Send SMS (phone number normalization handled by SMSService)
+                    send_result = sms_service.send_sms(phone_number, initial_message)
+                    if send_result.get('success'):
+                        successful += 1
+                    else:
+                        failed += 1
+                        print(f"Failed to send SMS to {phone_number}: {send_result.get('error', 'Unknown error')}")
                 
                 trigger_ids.append(trigger_id)
                 

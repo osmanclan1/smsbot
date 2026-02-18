@@ -1,0 +1,77 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: SMS Bot for Oakton Community College - Lambda Only (Tables exist separately)
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: python3.11
+    Environment:
+      Variables:
+        OPENAI_API_KEY: !Ref OpenAIApiKey
+        PINECONE_API_KEY: !Ref PineconeApiKey
+        PINECONE_INDEX_NAME: !Ref PineconeIndexName
+        TELNYX_API_KEY: !Ref TelnyxApiKey
+        TELNYX_PHONE_NUMBER: !Ref TelnyxPhoneNumber
+        DYNAMODB_CONVERSATIONS_TABLE: smsbot-conversations
+        DYNAMODB_TRIGGERS_TABLE: smsbot-triggers
+        DYNAMODB_RESULTS_TABLE: smsbot-results
+        AWS_REGION: !Ref AWS::Region
+
+Parameters:
+  OpenAIApiKey:
+    Type: String
+    NoEcho: true
+    Description: OpenAI API Key
+  PineconeApiKey:
+    Type: String
+    NoEcho: true
+    Description: Pinecone API Key
+  PineconeIndexName:
+    Type: String
+    Default: oakton-knowledge-base
+    Description: Pinecone index name
+  TelnyxApiKey:
+    Type: String
+    NoEcho: true
+    Description: Telnyx API Key
+  TelnyxPhoneNumber:
+    Type: String
+    Description: Telnyx phone number (e.g., +1234567890)
+
+Resources:
+  # Lambda Function - Main API Handler (using Mangum to wrap FastAPI)
+  ApiHandler:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: smsbot-api-handler
+      CodeUri: src/
+      Handler: api.main.handler
+      Events:
+        ApiRoot:
+          Type: Api
+          Properties:
+            Path: /{proxy+}
+            Method: ANY
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: smsbot-conversations
+        - DynamoDBCrudPolicy:
+            TableName: smsbot-triggers
+        - DynamoDBCrudPolicy:
+            TableName: smsbot-results
+        - DynamoDBCrudPolicy:
+            TableName: smsbot-students
+        - DynamoDBCrudPolicy:
+            TableName: smsbot-deadlines
+        - DynamoDBCrudPolicy:
+            TableName: smsbot-followups
+
+Outputs:
+  ApiUrl:
+    Description: API Gateway endpoint URL
+    Value: !Sub https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/
+  WebhookUrl:
+    Description: Telnyx webhook URL (configure this in Telnyx dashboard)
+    Value: !Sub https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/api/sms/webhook

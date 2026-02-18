@@ -1,0 +1,44 @@
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - npm ci
+    build:
+      commands:
+        - npm run build:admin
+  artifacts:
+    baseDirectory: admin/dist
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - node_modules/**/*
+  customHeaders:
+    - pattern: '**/*'
+      headers:
+        - key: 'X-Content-Type-Options'
+          value: 'nosniff'
+        - key: 'X-Frame-Options'
+          value: 'DENY'
+        - key: 'X-XSS-Protection'
+          value: '1; mode=block'
+        - key: 'Referrer-Policy'
+          value: 'strict-origin-when-cross-origin'
+  customRedirects:
+    - source: '/admin/login'
+      target: '/login.html'
+      status: '200'
+    - source: '/admin/login/'
+      target: '/login.html'
+      status: '200'
+    - source: '/admin'
+      target: '/index.html'
+      status: '200'
+    - source: '/admin/'
+      target: '/index.html'
+      status: '200'
+    - source: '</^[^.]+$|.(?!(css|gif|ico|jpg|js|png|txt|svg|woff|woff2|ttf|map|json|webp)$)([^.]+$)/>'
+      target: '/index.html'
+      status: '200'
+

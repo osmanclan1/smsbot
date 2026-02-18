@@ -140,7 +140,8 @@ class ConversationEngine:
         self,
         conversation_id: str,
         user_message: str,
-        phone_number: Optional[str] = None
+        phone_number: Optional[str] = None,
+        channel: Optional[str] = 'sms'
     ) -> Dict[str, str]:
         """
         Generate AI response to user message.
@@ -149,6 +150,7 @@ class ConversationEngine:
             conversation_id: Conversation ID
             user_message: User's message
             phone_number: Phone number (optional, used for profile checks)
+            channel: Communication channel ('sms' or 'voice', default 'sms')
             
         Returns:
             Dictionary with response text and action (if any)
@@ -186,8 +188,8 @@ class ConversationEngine:
                 students_table_available = False
                 print(f"Note: Students table not available, skipping profile collection: {e}")
         
-        # Add user message to conversation
-        self.db.add_message(conversation_id, 'user', user_message)
+        # Add user message to conversation (with channel tracking)
+        self.db.add_message(conversation_id, 'user', user_message, channel=channel)
         
         # Get conversation history
         messages = conversation.get('messages', [])
@@ -206,6 +208,22 @@ class ConversationEngine:
         is_next_steps_request = self._is_next_steps_request(user_message)
         is_in_wizard_flow = self._is_in_wizard_flow(conversation)
         
+        # Determine active flow for state machine
+        active_flow = None
+        if is_in_hold_flow or is_hold_request:
+            active_flow = 'hold_diagnosis'
+        elif 'payment' in user_message.lower() or (conversation.get('trigger_type') or '').startswith('payment'):
+            active_flow = 'payment'
+        elif is_registration_troubleshoot or is_in_registration_flow:
+            active_flow = 'registration'
+        elif is_in_wizard_flow:
+            active_flow = 'wizard'
+        
+        # Transition to IN_FLOW if entering a flow
+        current_state = conversation.get('conversation_state', 'INIT')
+        if active_flow and current_state in {'INIT', 'AWAITING_USER'}:
+            self.db.transition_conversation_state(conversation_id, 'IN_FLOW', active_flow=active_flow, reason=f'Entering {active_flow} flow')
+        
         # Get relevant context from knowledge base (prioritize links if link request)
         context = self.kb.get_context_for_conversation(
             user_message, 
@@ -214,7 +232,7 @@ class ConversationEngine:
         )
         
         # Build system prompt
-        trigger_type = conversation.get('trigger_type', 'default')
+        trigger_type = conversation.get('trigger_type') or 'default'
         trigger_context = ""
         
         # Add trigger-specific context to help AI be more proactive
@@ -232,8 +250,37 @@ class ConversationEngine:
             elif trigger_type in ['advising_reminder', 'graduation_checklist']:
                 trigger_context += "This is academic planning related. Help them organize, prepare questions, and take next steps."
         
-        # Build base system prompt
-        base_prompt = """You're a proactive SMS assistant for Oakton Community College. Help students with: tuition/payments (EZ Pay), registration, financial aid, deadlines, account holds, general info.
+        # Build base system prompt (adjust for channel)
+        if channel == 'voice':
+            base_prompt = """You're a proactive voice assistant for Oakton Community College. Help students with: tuition/payments (EZ Pay), registration, financial aid, deadlines, account holds, general info.
+
+IMPORTANT - ACCURATE TUITION INFORMATION (use these exact amounts):
+- In-District Students: $136.25 per credit hour (plus fees)
+- Out-of-District Students (Illinois residents): $367.00 per credit hour (plus fees)
+- Out-of-State Residents/International Students: $439.00 per credit hour (plus fees)
+
+Always mention that fees are in addition to tuition per credit hour. If asked about total cost, explain it's tuition × credit hours + fees.
+
+BE PROACTIVE: Offer next steps, break down tasks (1, 2, 3...), reference previous context, anticipate needs, use encouraging language.
+
+STYLE: Friendly, conversational, natural speech. Speak clearly and at a comfortable pace. You can provide longer explanations than SMS. For URLs, spell them out clearly (e.g., "w w w dot oakton dot edu slash paying dash for dash college"). Number steps when helpful.
+
+REMINDERS: Acknowledge deadline immediately, explain importance, offer specific help, give next steps.
+
+Call finish() when: action completed (paid/registered), issue resolved, student done, or conversation ends.
+
+Result types: paid, registered, resolved, reminder_sent, escalated, no_response, abandoned.
+
+Use provided context. Always be proactive and helpful. If scraped content has different tuition amounts, use the accurate amounts listed above instead."""
+        else:
+            base_prompt = """You're a proactive SMS assistant for Oakton Community College. Help students with: tuition/payments (EZ Pay), registration, financial aid, deadlines, account holds, general info.
+
+IMPORTANT - ACCURATE TUITION INFORMATION (use these exact amounts):
+- In-District Students: $136.25 per credit hour (plus fees)
+- Out-of-District Students (Illinois residents): $367.00 per credit hour (plus fees)
+- Out-of-State Residents/International Students: $439.00 per credit hour (plus fees)
+
+Always mention that fees are in addition to tuition per credit hour. If asked about total cost, explain it's tuition × credit hours + fees.
 
 BE PROACTIVE: Offer next steps, break down tasks (1, 2, 3...), reference previous context, anticipate needs, use encouraging language.
 
@@ -245,7 +292,7 @@ Call finish() when: action completed (paid/registered), issue resolved, student 
 
 Result types: paid, registered, resolved, reminder_sent, escalated, no_response, abandoned.
 
-Use provided context. Always be proactive and helpful."""
+Use provided context. Always be proactive and helpful. If scraped content has different tuition amounts, use the accurate amounts listed above instead."""
         
         # Add profile collection instructions if needed
         if needs_profile_setup or is_in_profile_flow:
@@ -538,6 +585,16 @@ Use the knowledge base context to provide accurate information and links."""
                 result_type = function_args.get("result_type", "resolved")
                 metadata = function_args.get("metadata", {})
                 
+                # Transition to appropriate terminal state
+                if result_type == "escalated":
+                    new_state = "ESCALATED"
+                elif result_type in {"paid", "registered", "resolved"}:
+                    new_state = "RESOLVED"
+                else:
+                    new_state = "RESOLVED"
+                
+                self.db.transition_conversation_state(conversation_id, new_state, reason=f"finish() called with result_type={result_type}")
+                
                 # Call finish function
                 phone_number = conversation.get('phone_number')
                 finish(conversation_id, result_type, phone_number, metadata)
@@ -619,7 +676,7 @@ Use the knowledge base context to provide accurate information and links."""
             
             # Add assistant response to conversation (wrap in try/except so errors don't break response)
             try:
-                self.db.add_message(conversation_id, 'assistant', response_text)
+                self.db.add_message(conversation_id, 'assistant', response_text, channel=channel)
             except Exception as e:
                 print(f"Note: Could not save message to conversation (this is OK): {e}")
             
@@ -1065,8 +1122,8 @@ Use the knowledge base context to provide accurate information and links."""
         
         is_new_conversation = False
         if not conversation:
-            # Create new conversation and use the returned ID directly
-            conversation_id = self.db.create_conversation(phone_number)
+            # Create new conversation and use the returned ID directly (default to SMS channel)
+            conversation_id = self.db.create_conversation(phone_number, channel='sms')
             # Validate conversation_id was created
             if not conversation_id:
                 return {"response": "I'm sorry, I encountered an error. Please try again."}
@@ -1080,7 +1137,8 @@ Use the knowledge base context to provide accurate information and links."""
                     'conversation_id': conversation_id,
                     'phone_number': phone_number,
                     'messages': [],
-                    'status': 'active'
+                    'status': 'active',
+                    'conversation_state': 'INIT'
                 }
             is_new_conversation = True
         else:
@@ -1092,8 +1150,14 @@ Use the knowledge base context to provide accurate information and links."""
         # Check if we need to collect profile (new conversation, no profile, and table is available)
         needs_profile_setup = students_table_available and is_new_conversation and not student_profile
         
-        # Generate response
-        return self.generate_response(conversation_id, user_message, phone_number=phone_number)
+        # If new conversation, transition from INIT to AWAITING_USER after first message
+        if is_new_conversation:
+            conversation_id = conversation.get('conversation_id')
+            if conversation_id:
+                self.db.transition_conversation_state(conversation_id, 'AWAITING_USER', reason='User sent first message')
+        
+        # Generate response (default to SMS channel for process_message)
+        return self.generate_response(conversation_id, user_message, phone_number=phone_number, channel='sms')
 
 
 def process_message(event, context):

@@ -1,0 +1,25 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+*.egg-info/
+dist/
+build/
+.env
+.DS_Store
+.aws-sam/
+samconfig.toml.local
+*.log
+# Node.js
+node_modules/
+package-lock.json
+
+# Build outputs  
+admin/dist/
+
+.vercel

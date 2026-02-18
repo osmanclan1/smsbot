@@ -10,7 +10,7 @@ from starlette.middleware.sessions import SessionMiddleware
 import os
 import secrets
 
-from api.routes import sms, admin, trigger, auth, student_auth, student
+from api.routes import sms, admin, trigger, auth, student_auth, student, voice
 from api.middleware.auth import AuthMiddleware
 
 app = FastAPI(title="SMS Bot API", version="1.0.0")
@@ -43,6 +43,7 @@ app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(student_auth.router, prefix="/api/student/auth", tags=["student-auth"])
 app.include_router(student.router, prefix="/api/student", tags=["student"])
 app.include_router(sms.router, prefix="/api/sms", tags=["sms"])
+app.include_router(voice.router, prefix="/api/voice", tags=["voice"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 app.include_router(trigger.router, prefix="/api/admin", tags=["trigger"])
 
@@ -57,6 +58,21 @@ async def root():
 async def health():
     """Health check endpoint."""
     return {"status": "healthy"}
+
+
+@app.post("/admin/timeout-check")
+async def timeout_check():
+    """Manual endpoint to check and timeout stale conversations (for cron jobs)."""
+    try:
+        from utils.conversation_timeout import check_and_timeout_conversations
+        timed_out_ids = check_and_timeout_conversations(limit=100)
+        return {
+            "status": "success",
+            "timed_out_count": len(timed_out_ids),
+            "timed_out_conversations": timed_out_ids
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
 
 
 @app.get("/debug/aws")
@@ -97,8 +113,8 @@ async def debug_aws():
 
 # Serve admin dashboard (for local development)
 # In Lambda, static files should be served via S3 + CloudFront
-admin_dist_path = os.path.join(os.path.dirname(__file__), "..", "..", "admin", "dist")
-admin_src_path = os.path.join(os.path.dirname(__file__), "..", "..", "admin", "src")
+admin_dist_path = os.path.join(os.path.dirname(__file__), "..", "..", "apps", "admin", "dist")
+admin_src_path = os.path.join(os.path.dirname(__file__), "..", "..", "apps", "admin", "src")
 
 # Check if dist exists (built files), otherwise fall back to src for dev
 if os.path.exists(admin_dist_path):
@@ -138,8 +154,8 @@ elif os.path.exists(admin_src_path):
 
 
 # Serve student portal (for local development)
-student_dist_path = os.path.join(os.path.dirname(__file__), "..", "..", "student", "dist")
-student_src_path = os.path.join(os.path.dirname(__file__), "..", "..", "student", "src")
+student_dist_path = os.path.join(os.path.dirname(__file__), "..", "..", "apps", "student", "dist")
+student_src_path = os.path.join(os.path.dirname(__file__), "..", "..", "apps", "student", "src")
 
 # Check if dist exists (built files), otherwise fall back to src for dev
 if os.path.exists(student_dist_path):

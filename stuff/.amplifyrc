@@ -1,0 +1,11 @@
+{
+  "providers": {
+    "awscloudformation": {
+      "AuthRoleName": "amplify-smsbot-prod-authRole",
+      "UnauthRoleName": "amplify-smsbot-prod-unauthRole",
+      "AuthRoleArn": "arn:aws:iam::117429392013:role/amplify-smsbot-prod-authRole",
+      "UnauthRoleArn": "arn:aws:iam::117429392013:role/amplify-smsbot-prod-unauthRole",
+      "Region": "us-east-1"
+    }
+  }
+}

@@ -1,0 +1,141 @@
+{
+  "student_scenarios": {},
+  "faq_failures": [
+    "Registration Hold FAQ: No clear answer found",
+    "Class Registration FAQ: No clear answer found",
+    "Deadline Confusion FAQ: No clear answer found"
+  ],
+  "search_failures": [],
+  "confusion_points": [
+    {
+      "page": "Scenario page: https://www.utdallas.edu/registrar",
+      "issue": "Info exists but unclear next steps",
+      "timestamp": "2026-01-17T18:50:27.153365"
+    },
+    {
+      "page": "Scenario page: https://www.utdallas.edu/registrar/holds",
+      "issue": "Info exists but unclear next steps",
+      "timestamp": "2026-01-17T18:50:30.718237"
+    },
+    {
+      "page": "https://www.utdallas.edu/bursar",
+      "issue": "Information exists but unclear next steps",
+      "timestamp": "2026-01-17T18:50:36.599888"
+    },
+    {
+      "page": "Scenario page: https://www.utdallas.edu/registrar",
+      "issue": "Info exists but unclear next steps",
+      "timestamp": "2026-01-17T18:51:04.266711"
+    },
+    {
+      "page": "Scenario page: https://www.utdallas.edu/registrar/registration",
+      "issue": "Info exists but unclear next steps",
+      "timestamp": "2026-01-17T18:51:07.771678"
+    },
+    {
+      "page": "Scenario page: https://www.utdallas.edu/registrar",
+      "issue": "Info exists but unclear next steps",
+      "timestamp": "2026-01-17T18:51:44.305270"
+    },
+    {
+      "page": "Scenario page: https://www.utdallas.edu/academic-calendar",
+      "issue": "Info exists but unclear next steps",
+      "timestamp": "2026-01-17T18:51:47.777401"
+    }
+  ],
+  "resolution_time": 111.329865,
+  "did_student_find_answer": true,
+  "student_frustration_events": [
+    {
+      "event": "Search 'i cant register' only returned generic contact info",
+      "reason": "No actual answers, just 'contact us'",
+      "timestamp": "2026-01-17T18:50:16.363359"
+    },
+    {
+      "event": "Search 'hold on account' only returned generic contact info",
+      "reason": "No actual answers, just 'contact us'",
+      "timestamp": "2026-01-17T18:50:20.653143"
+    },
+    {
+      "event": "Search 'registration wont work' only returned generic contact info",
+      "reason": "No actual answers, just 'contact us'",
+      "timestamp": "2026-01-17T18:50:23.712605"
+    },
+    {
+      "event": "Couldn't find answer in Registration Hold FAQ",
+      "reason": "Tried 3 different searches",
+      "timestamp": "2026-01-17T18:50:23.712629"
+    },
+    {
+      "event": "Search 'classes full' only returned generic contact info",
+      "reason": "No actual answers, just 'contact us'",
+      "timestamp": "2026-01-17T18:50:54.870482"
+    },
+    {
+      "event": "Search 'cant find classes' only returned generic contact info",
+      "reason": "No actual answers, just 'contact us'",
+      "timestamp": "2026-01-17T18:50:57.770550"
+    },
+    {
+      "event": "Search 'registration help' only returned generic contact info",
+      "reason": "No actual answers, just 'contact us'",
+      "timestamp": "2026-01-17T18:51:00.847913"
+    },
+    {
+      "event": "Couldn't find answer in Class Registration FAQ",
+      "reason": "Tried 3 different searches",
+      "timestamp": "2026-01-17T18:51:00.847928"
+    },
+    {
+      "event": "Search 'when is deadline' only returned generic contact info",
+      "reason": "No actual answers, just 'contact us'",
+      "timestamp": "2026-01-17T18:51:16.890427"
+    },
+    {
+      "event": "Search 'missed deadline' only returned generic contact info",
+      "reason": "No actual answers, just 'contact us'",
+      "timestamp": "2026-01-17T18:51:37.416065"
+    },
+    {
+      "event": "Search 'important dates' only returned generic contact info",
+      "reason": "No actual answers, just 'contact us'",
+      "timestamp": "2026-01-17T18:51:40.810089"
+    },
+    {
+      "event": "Couldn't find answer in Deadline Confusion FAQ",
+      "reason": "Tried 3 different searches",
+      "timestamp": "2026-01-17T18:51:40.810110"
+    },
+    {
+      "event": "Couldn't find live chat option",
+      "reason": "No visible chat widget or link",
+      "timestamp": "2026-01-17T18:52:01.915794"
+    }
+  ],
+  "scenario_results": {
+    "Registration Hold": {
+      "found_answer": true,
+      "duration": 22.305866
+    },
+    "Payment Issue": {
+      "found_answer": true,
+      "duration": 3.880364
+    },
+    "Financial Aid Confusion": {
+      "found_answer": true,
+      "duration": 7.329245
+    },
+    "Class Registration": {
+      "found_answer": true,
+      "duration": 19.839981
+    },
+    "Deadline Confusion": {
+      "found_answer": true,
+      "duration": 38.004445
+    },
+    "Vague Account Problem": {
+      "found_answer": true,
+      "duration": 7.410565
+    }
+  }
+}

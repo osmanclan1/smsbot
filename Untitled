@@ -1,0 +1,24 @@
+# Environment variables (Sensitive info)
+.env
+.env.*
+!.env.example
+
+# Node.js
+node_modules/
+dist/
+build/
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+
+# Deployment / IDE
+deploy/*.zip
+.vercel
+.amplify
+.aws-sam/

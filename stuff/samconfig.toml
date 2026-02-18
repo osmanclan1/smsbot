@@ -1,0 +1,21 @@
+version = 0.1
+
+[default]
+[default.global.parameters]
+stack_name = "smsbot-stack"
+region = "us-east-1"
+
+[default.build.parameters]
+cached = true
+parallel = true
+
+[default.deploy.parameters]
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = true
+resolve_s3 = true
+region = "us-east-1"
+image_repositories = []
+s3_prefix = "smsbot-stack"
+profile = "rise-admin4"
+parameter_overrides = "PineconeIndexName=\"oakton-knowledge-base\" TelnyxPhoneNumber=\"+18334209112\""
+

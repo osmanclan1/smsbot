@@ -1,24 +1,4 @@
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-env/
-venv/
-ENV/
-.venv
-*.egg-info/
-dist/
-build/
+node_modules
 .env
-.DS_Store
-.aws-sam/
-samconfig.toml.local
-*.log
-# Node.js
-node_modules/
-package-lock.json
-
-# Build outputs  
-admin/dist/
-
+.env.*
+!.env.example

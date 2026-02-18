@@ -1,0 +1,26 @@
+{
+  "student_scenarios": {},
+  "faq_failures": [],
+  "search_failures": [],
+  "confusion_points": [
+    {
+      "page": "Registrar Holds Page",
+      "issue": "Info exists but unclear next steps",
+      "timestamp": "2026-01-17T18:47:46.952927"
+    },
+    {
+      "page": "Registration Page",
+      "issue": "Info exists but unclear next steps",
+      "timestamp": "2026-01-17T18:47:50.363296"
+    }
+  ],
+  "resolution_time": 53.175267,
+  "did_student_find_answer": true,
+  "student_frustration_events": [
+    {
+      "event": "Error on Registrar page",
+      "reason": "Page.goto: Timeout 30000ms exceeded.\nCall log:\n  - navigating to \"https://www.utdallas.edu/registrar\", waiting until \"networkidle\"\n",
+      "timestamp": "2026-01-17T18:47:33.569174"
+    }
+  ]
+}

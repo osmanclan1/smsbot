@@ -218,3 +218,65 @@ async def test_chat(request: dict):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.post("/send-sms")
+async def send_sms(request: dict):
+    """
+    Send actual SMS message and optionally process response through conversation engine.
+    """
+    try:
+        from api.services.sms_service import SMSService
+        from api.services.conversation import ConversationEngine
+        
+        phone_number = request.get("phone_number")
+        message = request.get("message")
+        process_response = request.get("process_response", False)  # Whether to get AI response
+        
+        if not phone_number or not message:
+            raise HTTPException(status_code=400, detail="phone_number and message are required")
+        
+        # Send SMS
+        sms_service = SMSService()
+        send_result = sms_service.send_sms(phone_number, message)
+        
+        if not send_result.get("success"):
+            return {
+                "success": False,
+                "error": send_result.get("error", "Failed to send SMS"),
+                "message_id": None
+            }
+        
+        # Optionally process response through conversation engine
+        response_text = None
+        if process_response:
+            try:
+                engine = ConversationEngine()
+                result = engine.process_message(phone_number, message)
+                response_text = result.get("response", "")
+                
+                # Send AI response back via SMS
+                if response_text and result.get("action") != "finish":
+                    response_send_result = sms_service.send_sms(phone_number, response_text)
+                    return {
+                        "success": True,
+                        "message_id": send_result.get("message_id"),
+                        "response_sent": response_send_result.get("success", False),
+                        "response_text": response_text,
+                        "response_message_id": response_send_result.get("message_id")
+                    }
+            except Exception as e:
+                print(f"Error processing response: {e}")
+                # Still return success for the initial SMS send
+        
+        return {
+            "success": True,
+            "message_id": send_result.get("message_id"),
+            "response_sent": False,
+            "response_text": response_text
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+

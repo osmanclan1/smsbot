@@ -3,8 +3,10 @@ DynamoDB service layer for storing conversations, triggers, and results.
 """
 
 import os
+import time
 import boto3
 from boto3.dynamodb.conditions import Key
+from botocore.exceptions import ClientError
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 import uuid
@@ -177,7 +179,8 @@ class DynamoDBService:
         phone_number: str,
         trigger_type: Optional[str] = None,
         trigger_id: Optional[str] = None,
-        initial_message: Optional[str] = None
+        initial_message: Optional[str] = None,
+        channel: Optional[str] = 'sms'
     ) -> str:
         """
         Create a new conversation.
@@ -187,6 +190,7 @@ class DynamoDBService:
             trigger_type: Type of trigger that started conversation
             trigger_id: ID of trigger
             initial_message: Initial message sent
+            channel: Communication channel ('sms', 'voice', or 'both')
             
         Returns:
             Conversation ID
@@ -199,18 +203,23 @@ class DynamoDBService:
             'phone_number': phone_number,
             'created_at': timestamp,
             'updated_at': timestamp,
-            'status': 'active',
+            'status': 'active',  # Legacy field (active, completed, escalated)
+            'conversation_state': 'INIT',  # State machine: INIT, AWAITING_USER, IN_FLOW, RESOLVED, ESCALATED, TIMEOUT
+            'active_flow': None,  # Current flow: 'payment', 'hold_diagnosis', 'registration', 'wizard', None
+            'state_transitions': [{'from': None, 'to': 'INIT', 'timestamp': timestamp}],  # Audit trail
             'messages': [],
             'trigger_type': trigger_type,
             'trigger_id': trigger_id,
-            'action_items': []  # Phase 2: Track action items
+            'action_items': [],  # Phase 2: Track action items
+            'channel': channel  # Track communication channel
         }
         
         if initial_message:
             item['messages'].append({
                 'role': 'assistant',
                 'content': initial_message,
-                'timestamp': timestamp
+                'timestamp': timestamp,
+                'channel': channel  # Track channel for initial message
             })
         
         # Try DynamoDB first
@@ -306,7 +315,8 @@ class DynamoDBService:
         self,
         conversation_id: str,
         role: str,
-        content: str
+        content: str,
+        channel: Optional[str] = None
     ) -> bool:
         """
         Add message to conversation.
@@ -315,6 +325,7 @@ class DynamoDBService:
             conversation_id: Conversation ID
             role: 'user' or 'assistant'
             content: Message content
+            channel: Communication channel ('sms' or 'voice', optional)
             
         Returns:
             True if successful
@@ -330,6 +341,10 @@ class DynamoDBService:
             'content': content,
             'timestamp': timestamp
         }
+        
+        # Add channel if provided
+        if channel:
+            message['channel'] = channel
         
         # Try DynamoDB first
         if self.conversations_table:
@@ -480,6 +495,225 @@ class DynamoDBService:
             print(f"Error updating conversation status: {e}")
             return False
     
+    def transition_conversation_state(
+        self,
+        conversation_id: str,
+        new_state: str,
+        active_flow: Optional[str] = None,
+        reason: Optional[str] = None
+    ) -> bool:
+        """
+        Transition conversation to a new state with validation.
+        
+        Valid states: INIT, AWAITING_USER, IN_FLOW, RESOLVED, ESCALATED, TIMEOUT
+        
+        Args:
+            conversation_id: Conversation ID
+            new_state: New state to transition to
+            active_flow: Active flow (if entering IN_FLOW state)
+            reason: Reason for transition (for audit trail)
+            
+        Returns:
+            True if transition successful, False otherwise
+        """
+        VALID_STATES = {'INIT', 'AWAITING_USER', 'IN_FLOW', 'RESOLVED', 'ESCALATED', 'TIMEOUT'}
+        VALID_TRANSITIONS = {
+            'INIT': {'AWAITING_USER', 'RESOLVED'},
+            'AWAITING_USER': {'IN_FLOW', 'RESOLVED', 'TIMEOUT'},
+            'IN_FLOW': {'AWAITING_USER', 'RESOLVED', 'ESCALATED'},
+            'RESOLVED': set(),  # Terminal state
+            'ESCALATED': set(),  # Terminal state
+            'TIMEOUT': {'RESOLVED'}
+        }
+        
+        if new_state not in VALID_STATES:
+            print(f"Invalid state: {new_state}")
+            return False
+        
+        # Get current state
+        conversation = self.get_conversation(conversation_id)
+        if not conversation:
+            print(f"Conversation {conversation_id} not found")
+            return False
+        
+        current_state = conversation.get('conversation_state', 'INIT')
+        
+        # Validate transition
+        if current_state in VALID_TRANSITIONS:
+            if new_state not in VALID_TRANSITIONS[current_state]:
+                print(f"Invalid transition from {current_state} to {new_state}")
+                return False
+        
+        # Update state with transition history
+        timestamp = datetime.utcnow().isoformat()
+        transition = {
+            'from': current_state,
+            'to': new_state,
+            'timestamp': timestamp,
+            'active_flow': active_flow,
+            'reason': reason
+        }
+        
+        try:
+            update_expr = 'SET conversation_state = :state, updated_at = :timestamp, state_transitions = list_append(state_transitions, :transition)'
+            expr_attrs = {
+                ':state': new_state,
+                ':timestamp': timestamp,
+                ':transition': [transition]
+            }
+            
+            if active_flow is not None:
+                update_expr += ', active_flow = :flow'
+                expr_attrs[':flow'] = active_flow
+            elif new_state not in {'IN_FLOW', 'AWAITING_USER'}:
+                # Clear active_flow when leaving IN_FLOW
+                update_expr += ', active_flow = :flow'
+                expr_attrs[':flow'] = None
+            
+            # Also update legacy status field
+            if new_state in {'RESOLVED', 'ESCALATED', 'TIMEOUT'}:
+                if new_state == 'RESOLVED':
+                    legacy_status = 'completed'
+                elif new_state == 'ESCALATED':
+                    legacy_status = 'escalated'
+                else:
+                    legacy_status = 'completed'
+                update_expr += ', #status = :legacy_status'
+                expr_attrs[':legacy_status'] = legacy_status
+            
+            if self.conversations_table:
+                self.conversations_table.update_item(
+                    Key={'conversation_id': conversation_id},
+                    UpdateExpression=update_expr,
+                    ExpressionAttributeNames={'#status': 'status'},
+                    ExpressionAttributeValues=expr_attrs
+                )
+                return True
+            else:
+                # In-memory update
+                with self._memory_lock:
+                    if conversation_id in self._memory_store:
+                        self._memory_store[conversation_id]['conversation_state'] = new_state
+                        self._memory_store[conversation_id]['updated_at'] = timestamp
+                        if 'state_transitions' not in self._memory_store[conversation_id]:
+                            self._memory_store[conversation_id]['state_transitions'] = []
+                        self._memory_store[conversation_id]['state_transitions'].append(transition)
+                        if active_flow is not None:
+                            self._memory_store[conversation_id]['active_flow'] = active_flow
+                        return True
+        except Exception as e:
+            print(f"Error transitioning conversation state: {e}")
+            return False
+        
+        return False
+    
+    def is_student_opted_out(self, phone_number: str) -> bool:
+        """
+        Check if student has opted out of SMS communications.
+        
+        Args:
+            phone_number: Student phone number
+            
+        Returns:
+            True if opted out, False otherwise
+        """
+        # Check in students table if available
+        if self.students_table:
+            try:
+                response = self.students_table.get_item(
+                    Key={'phone_number': phone_number}
+                )
+                if 'Item' in response:
+                    item = response['Item']
+                    return item.get('sms_opted_out', False)
+            except Exception as e:
+                print(f"Error checking opt-out status: {e}")
+        
+        # Check in-memory store
+        with self._memory_lock:
+            opt_outs = self._memory_store.get('opt_outs', {})
+            return opt_outs.get(phone_number, False)
+    
+    def opt_out_student(self, phone_number: str) -> bool:
+        """
+        Opt out a student from SMS communications.
+        
+        Args:
+            phone_number: Student phone number
+            
+        Returns:
+            True if successful
+        """
+        timestamp = datetime.utcnow().isoformat()
+        
+        # Update students table if available
+        if self.students_table:
+            try:
+                self.students_table.update_item(
+                    Key={'phone_number': phone_number},
+                    UpdateExpression='SET sms_opted_out = :opted_out, opted_out_at = :timestamp, updated_at = :timestamp',
+                    ExpressionAttributeValues={
+                        ':opted_out': True,
+                        ':timestamp': timestamp
+                    }
+                )
+            except Exception as e:
+                # If update fails, try put_item
+                try:
+                    self.students_table.put_item(
+                        Item={
+                            'phone_number': phone_number,
+                            'sms_opted_out': True,
+                            'opted_out_at': timestamp,
+                            'created_at': timestamp,
+                            'updated_at': timestamp
+                        }
+                    )
+                except Exception as e2:
+                    print(f"Error opting out student in DynamoDB: {e2}")
+        
+        # Also store in-memory
+        with self._memory_lock:
+            if 'opt_outs' not in self._memory_store:
+                self._memory_store['opt_outs'] = {}
+            self._memory_store['opt_outs'][phone_number] = True
+        
+        return True
+    
+    def opt_in_student(self, phone_number: str) -> bool:
+        """
+        Opt in a student to SMS communications (for START keyword).
+        
+        Args:
+            phone_number: Student phone number
+            
+        Returns:
+            True if successful
+        """
+        timestamp = datetime.utcnow().isoformat()
+        
+        # Update students table if available
+        if self.students_table:
+            try:
+                self.students_table.update_item(
+                    Key={'phone_number': phone_number},
+                    UpdateExpression='SET sms_opted_out = :opted_out, opted_in_at = :timestamp, updated_at = :timestamp',
+                    ExpressionAttributeValues={
+                        ':opted_out': False,
+                        ':timestamp': timestamp
+                    }
+                )
+            except Exception as e:
+                print(f"Error opting in student in DynamoDB: {e}")
+        
+        # Also update in-memory
+        with self._memory_lock:
+            if 'opt_outs' not in self._memory_store:
+                self._memory_store['opt_outs'] = {}
+            self._memory_store['opt_outs'][phone_number] = False
+        
+        return True
+    
     def list_conversations(
         self,
         limit: int = 50,
@@ -580,6 +814,62 @@ class DynamoDBService:
             print(f"Error updating trigger status: {e}")
             return False
     
+    def get_recent_triggers(
+        self,
+        phone_number: str,
+        hours: int = 72
+    ) -> List[Dict]:
+        """
+        Get recent triggers for a phone number within specified hours.
+        
+        Args:
+            phone_number: Student phone number
+            hours: Hours to look back (default 72)
+            
+        Returns:
+            List of recent triggers
+        """
+        try:
+            from datetime import timedelta
+            cutoff_time = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
+            
+            # Query triggers table by phone_number (requires GSI if not primary key)
+            # For now, scan and filter (inefficient but works)
+            response = self.triggers_table.scan(
+                FilterExpression='phone_number = :phone AND created_at >= :cutoff',
+                ExpressionAttributeValues={
+                    ':phone': phone_number,
+                    ':cutoff': cutoff_time
+                }
+            )
+            return response.get('Items', [])
+        except Exception as e:
+            print(f"Error getting recent triggers: {e}")
+            return []
+    
+    def get_active_conversation(self, phone_number: str) -> Optional[Dict]:
+        """
+        Get active conversation for phone number (non-terminal states).
+        
+        Args:
+            phone_number: Student phone number
+            
+        Returns:
+            Active conversation if exists, None otherwise
+        """
+        conversation = self.get_conversation_by_phone(phone_number)
+        if not conversation:
+            return None
+        
+        # Check if conversation is in a terminal state
+        state = conversation.get('conversation_state', conversation.get('status', 'active'))
+        terminal_states = {'RESOLVED', 'ESCALATED', 'TIMEOUT', 'completed', 'escalated'}
+        
+        if state in terminal_states:
+            return None
+        
+        return conversation
+    
     def list_triggers(
         self,
         limit: int = 50
@@ -633,7 +923,43 @@ class DynamoDBService:
         
         self.results_table.put_item(Item=item)
         return result_id
-    
+
+    # Webhook idempotency: reuse results table with a dedicated key prefix (shared across Lambda containers)
+    _WEBHOOK_DEDUP_PREFIX = "webhook_dedup#"
+
+    def try_claim_webhook_id(self, message_id: str) -> bool:
+        """
+        Claim a Telnyx message_id for processing. Safe across Lambda invocations/retries.
+        Uses results table with result_id = webhook_dedup#<message_id> and conditional put.
+        Returns True if this invocation claimed it (should process), False if already claimed (duplicate).
+        Raises on DynamoDB errors so caller can fall back to in-memory idempotency.
+        """
+        if not message_id:
+            return True  # no id -> process once, no dedup possible
+        if not self.results_table:
+            raise RuntimeError("DynamoDB results table not available")
+        dedup_key = self._WEBHOOK_DEDUP_PREFIX + message_id
+        now = datetime.utcnow().isoformat()
+        # TTL: optional; if table has TTL enabled on 'ttl', items expire (e.g. 24h)
+        ttl_seconds = 86400  # 24 hours
+        item = {
+            "result_id": dedup_key,
+            "result_type": "webhook_dedup",
+            "created_at": now,
+            "metadata": {"message_id": message_id},
+            "ttl": int(time.time()) + ttl_seconds,
+        }
+        try:
+            self.results_table.put_item(
+                Item=item,
+                ConditionExpression="attribute_not_exists(result_id)",
+            )
+            return True  # claimed
+        except ClientError as e:
+            if e.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+                return False  # already claimed by another invocation
+            raise
+
     def get_results_by_conversation(self, conversation_id: str) -> List[Dict]:
         """Get all results for a conversation."""
         try:

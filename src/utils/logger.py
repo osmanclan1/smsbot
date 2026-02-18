@@ -7,6 +7,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from storage.dynamodb import DynamoDBService
+from api.services.escalation import EscalationService
 
 
 def finish(
@@ -45,8 +46,20 @@ def finish(
     """
     db = DynamoDBService()
     
-    # Update conversation status to completed
-    db.update_conversation_status(conversation_id, 'completed')
+    # Update conversation status to completed (legacy field)
+    # State machine transition is handled by conversation engine before calling finish()
+    if result_type != 'escalated':  # Escalated state already set by conversation engine
+        db.update_conversation_status(conversation_id, 'completed')
+    
+    # Handle escalation - notify admins
+    if result_type == 'escalated':
+        escalation_service = EscalationService()
+        escalation_reason = metadata.get('reason', 'Unknown escalation reason') if metadata else 'Unknown escalation reason'
+        escalation_service.escalate_conversation(
+            conversation_id=conversation_id,
+            escalation_reason=escalation_reason,
+            metadata=metadata
+        )
     
     # Create result record
     result_id = db.create_result(
