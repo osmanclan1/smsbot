@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Opt in – Oakton Alert</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Fraunces:opsz,wght@9..144,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <a href="index.html" class="logo" style="color: inherit; text-decoration: none;">Oakton Alert</a>
+    </div>
+  </header>
+
+  <main class="main">
+    <section class="hero">
+      <h1>Sign up for Oakton Alert</h1>
+      <p class="hero-sub">Receive automated tuition payment reminders and enrollment status notifications from Oakton Community College via text message.</p>
+    </section>
+
+    <section class="card opt-in-form-card">
+      <h2>Mobile number</h2>
+      <p class="opt-in-disclaimer">
+        By providing your phone number, you agree to receive SMS tuition payment reminders and enrollment status notifications from Oakton Alert. Message frequency may vary. Standard Message and Data Rates may apply. Reply STOP to opt out. Reply HELP for help. We will not share mobile information with third parties for promotional or marketing purposes.
+      </p>
+      <p><a href="privacy.html" style="color: var(--color-accent);">Privacy policy</a></p>
+
+      <form id="opt-in-form" class="opt-in-form" novalidate>
+        <div class="form-group">
+          <label for="phone">Phone number</label>
+          <input type="tel" id="phone" name="phone" placeholder="+1 (555) 555-5555" autocomplete="tel" required>
+        </div>
+        <div class="form-group checkbox-group">
+          <input type="checkbox" id="consent" name="consent" class="opt-in-checkbox">
+          <label for="consent" class="checkbox-label">I agree to receive Oakton Alert text messages as described above.</label>
+        </div>
+        <button type="submit" class="btn btn-primary">Continue</button>
+      </form>
+
+      <div id="next-step" class="next-step" hidden>
+        <p><strong>Next step:</strong> From the phone number you entered, text <strong>START</strong> to the Oakton Alert number you received in your reminder. You will get a confirmation message. Message and data rates may apply.</p>
+        <p><a href="index.html" class="btn btn-primary">Back to support</a></p>
+      </div>
+    </section>
+
+    <p style="margin-top: 1.5rem;"><a href="index.html" style="color: var(--color-text-muted); text-decoration: none;">← Back to Oakton Alert support</a></p>
+  </main>
+
+  <footer class="site-footer">
+    <p>Oakton Alert support. <a href="privacy.html" style="color: var(--color-accent);">Privacy policy</a></p>
+  </footer>
+
+  <script>
+    document.getElementById('opt-in-form').addEventListener('submit', function(e) {
+      e.preventDefault();
+      var phone = document.getElementById('phone').value.trim();
+      var consent = document.getElementById('consent').checked;
+      if (!phone) {
+        this.querySelector('#phone').focus();
+        return;
+      }
+      document.querySelector('.opt-in-form').hidden = true;
+      document.getElementById('next-step').hidden = false;
+    });
+  </script>
+</body>
+</html>
