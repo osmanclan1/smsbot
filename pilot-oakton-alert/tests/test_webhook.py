@@ -78,4 +78,6 @@ def test_webhook_intent_gets_canned_response(mock_send):
     assert r.status_code == 200
     mock_send.assert_called_once()
     text_sent = mock_send.call_args[0][1]
-    assert "my.oakton.edu" in text_sent or "pay" in text_sent.lower()
+    assert "oakton.edu" in text_sent and (
+        "my.oakton.edu" in text_sent or "pay" in text_sent.lower()
+    )

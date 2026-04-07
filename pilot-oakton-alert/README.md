@@ -6,7 +6,7 @@ Single-purpose SMS bot for Oakton Summer pilot: tuition reminders and "Safe Remo
 
 - **Keywords:** START (opt-in), STOP (opt-out), HELP (info) with fixed Oakton Alert copy.
 - **Outbound:** Send one-time reminders via trigger types: `registration_opens`, `payment_deadline_final`, `payment_deadline_reminder`.
-- **Inbound:** Replies are matched to intents (where to pay, withdraw, deadline, balance, etc.) and answered with canned responses.
+- **Inbound:** Replies are matched to intents and answered with canned responses: where to pay, withdraw, deadline, balance, refunds, registration/holds, financial aid, contact info, already paid, what is Oakton Alert, and MyOakton/login.
 
 ## Run locally
 
@@ -31,9 +31,18 @@ uvicorn main:app --reload --port 8001
 | `TELNYX_MESSAGING_PROFILE_ID` | Optional; required for toll-free |
 | `TELNYX_PUBLIC_KEY` | Base64-encoded Ed25519 public key (Portal → Keys & Credentials) for webhook signature verification; if unset, verification is skipped (dev-friendly) |
 | `TRIGGER_API_KEY` | Optional. If set, `POST /api/trigger` requires `Authorization: Bearer <this value>`. If unset, no auth is required (dev-friendly). |
-| `OAKTON_ALERT_DEADLINE_TEXT` | Default text for "when is deadline?" (e.g. "May 15") |
-| `OAKTON_ALERT_MY_OAKTON_URL` | Default: my.oakton.edu |
+| `OAKTON_ALERT_DEADLINE_TEXT` | Override deadline line for "when is deadline?" (default points to the public payment-options page) |
+| `OAKTON_ALERT_MY_OAKTON_URL` | Student portal host or URL (default `my.oakton.edu`; normalized to `https://` in messages). Login required for balance and payment. |
 | `OAKTON_ALERT_HELP_URL` | Default: oaktonalert.com |
+| `OAKTON_ALERT_HELP_EMAIL` | Default: info@oaktonalert.com |
+| `OAKTON_ALERT_PUBLIC_TUITION_FEES_URL` | Public tuition/fees/EZ Pay page (default `oakton.edu/.../tuition-and-fees.php`) |
+| `OAKTON_ALERT_PUBLIC_PAYMENT_OPTIONS_URL` | Public payment schedules and EZ Pay (default `oakton.edu/.../payment-options.php`) |
+| `OAKTON_ALERT_PUBLIC_FINANCIAL_AID_URL` | Public financial aid overview (default `oakton.edu/.../financial-aid/index.php`) |
+| `OAKTON_ALERT_PUBLIC_WITHDRAWAL_URL` | Public withdrawal policy (default `oakton.edu/.../withdrawal-from-classes.php`) |
+| `OAKTON_ALERT_PUBLIC_REGISTER_FOR_CLASSES_URL` | Public registration info (default `oakton.edu/.../register-for-classes.php`) |
+| `OAKTON_ALERT_REGISTRATION_INFO` | Optional override for registration/holds intent (default uses public register URL + myOakton) |
+| `OAKTON_ALERT_FINANCIAL_AID_INFO` | Optional override for financial aid intent (default uses public financial aid URL + myOakton) |
+| `OAKTON_ALERT_CASHIER_CONTACT` | Optional override for contact/human intent (default includes Cashier and Enrollment Center phone numbers) |
 
 ## Testing
 
@@ -42,11 +51,104 @@ uvicorn main:app --reload --port 8001
 3. Send START, STOP, HELP from your phone; then try "where do I pay?", "how do I withdraw?", "when is the deadline?".
 4. Call trigger endpoint (curl or Postman) to send the two sample messages to a test number.
 
+## Pilot utility APIs (meeting/demo friendly)
+
+These endpoints are available from the same app and avoid any AWS CLI dependency during live demos.
+
+- `POST /api/test/send` (intentionally unauthenticated for pilot use)
+- `POST /api/campaign/send` (uses `TRIGGER_API_KEY` bearer auth when set)
+- `GET /api/ops/health` (read-only readiness checks; does not send SMS)
+
+### `POST /api/test/send` (no auth)
+
+Use for one-off meeting sends.
+
+Trigger template mode:
+
+```bash
+curl -X POST http://localhost:8001/api/test/send \
+  -H "Content-Type: application/json" \
+  -d '{"phone_number":"+15551234567","trigger_type":"registration_opens"}'
+```
+
+Custom message mode:
+
+```bash
+curl -X POST http://localhost:8001/api/test/send \
+  -H "Content-Type: application/json" \
+  -d '{"phone_number":"+15551234567","message":"Oakton Alert pilot test message."}'
+```
+
+### `POST /api/campaign/send` (bulk, protected)
+
+If `TRIGGER_API_KEY` is set, include `Authorization: Bearer <key>`.
+
+```bash
+curl -X POST http://localhost:8001/api/campaign/send \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TRIGGER_API_KEY" \
+  -d '{"phone_numbers":["+15551230001","+15551230002"],"trigger_type":"payment_deadline_reminder","days":3}'
+```
+
+Response includes per-number `results` and totals for `sent`, `skipped` (opted-out), and `failed`.
+
+### `GET /api/ops/health` (no send)
+
+```bash
+curl http://localhost:8001/api/ops/health
+```
+
+Returns masked/safe diagnostics:
+- Telnyx API key presence (masked preview)
+- Sender number presence and normalized format
+- Whether webhook signature verification is enabled (`TELNYX_PUBLIC_KEY`)
+- Whether campaign endpoint is protected (`TRIGGER_API_KEY`)
+
+Warning: `/api/test/send` is intentionally open for pilot speed. Keep this endpoint restricted to pilot environments only.
+
+## Deploy to AWS (no server to keep running)
+
+The pilot can run as a single Lambda behind API Gateway so you don't need to keep a local server or ngrok running.
+
+**Prerequisites:** AWS CLI configured, [SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html) installed, Telnyx API key and phone number (and optionally `TELNYX_PUBLIC_KEY` for webhook verification and `TRIGGER_API_KEY` for trigger auth).
+
+**Steps (from repo root):**
+
+```bash
+# Build the Lambda package
+sam build -t deploy/template-pilot.yaml
+
+# Deploy using Telnyx + optional keys from repo root .env (recommended)
+./deploy/deploy-pilot.sh
+
+# Or deploy (guided mode prompts for parameters)
+sam deploy -t deploy/template-pilot.yaml --guided
+# Or with config only: sam deploy -t deploy/template-pilot.yaml --config-file deploy/samconfig-pilot.toml
+```
+
+Ensure AWS credentials work (`aws sts get-caller-identity`). If you use `AWS_PROFILE` in `.env`, run `aws sso login --profile …` when you see `ExpiredToken`. The deploy script clears static `AWS_ACCESS_KEY_*` from `.env` when `AWS_PROFILE` is set so SSO is used.
+
+**Deploy script notes:** `deploy/deploy-pilot.sh` uses **absolute** paths for `--config-file` and deploys **`.aws-sam/build/template.yaml`** after `sam build` (not `deploy/template-pilot.yaml`). Deploying the source template can upload **only app source** without `pip` deps, causing `Runtime.ImportModuleError: No module named 'fastapi'` on Lambda. Empty `TRIGGER_API_KEY` is omitted from `--parameter-overrides` because SAM rejects `TriggerApiKey=`.
+
+**Lambda name:** This stack deploys the function as **`smsbot-pilot-oakton-alert-api`** so it does not collide with an older stack (`pilot-stack`) that may already own **`pilot-oakton-alert-api`** in the same account.
+
+**Troubleshooting:** From repo root, with SSO (`source .env` then unset static AWS keys if using `AWS_PROFILE`): `./deploy/diagnose-pilot-stack.sh`
+
+When prompted, provide at least `TelnyxApiKey` and `TelnyxPhoneNumber`. Optional: `TelnyxMessagingProfileId`, `TelnyxPublicKey`, `TriggerApiKey`, `OaktonAlertDeadlineText`, `OaktonAlertMyOaktonUrl`, and the `OaktonAlertPublic*` URLs (defaults match `config.py`).
+
+**After deploy:**
+
+1. Copy the **WebhookUrl** from the stack outputs (e.g. `https://xxx.execute-api.us-east-1.amazonaws.com/Prod/api/sms/webhook`).
+2. In the Telnyx dashboard, set your messaging webhook URL to this **WebhookUrl**.
+3. To send reminders, call the **TriggerUrl** (from outputs) with `POST` and JSON body; if you set `TRIGGER_API_KEY`, add header `Authorization: Bearer <key>`.
+
+**Note:** Opt-out and rate limit are in-memory per Lambda instance. For production persistence across cold starts and instances, you can add a DynamoDB table and update `storage.py` later.
+
 ## Structure
 
 - `messages.py` – All canned strings (START/STOP/HELP, trigger texts, fallback).
 - `config.py` – URLs and deadline text (env overrides).
-- `intents.py` – Intent patterns and canned replies for student questions.
+- `intents.py` – Intent patterns and canned replies (payment, withdrawal, deadline, balance, refunds, registration/holds, financial aid, contact, already paid, what is Oakton Alert, MyOakton/login).
 - `storage.py` – Opt-out list (in-memory for local).
 - `rate_limiter.py` – In-memory per-phone rate limit.
 - `sms_client.py` – Telnyx send.

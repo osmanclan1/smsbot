@@ -28,7 +28,9 @@ _INTENT_SPECS = [
             r"\bpay\s+tuition",
             r"\b(link|url|website)\s+(to\s+)?pay",
         ],
-        f"Oakton Alert: Pay and view payment options at {config.MY_OAKTON_URL}. You can also set up an installment plan there. Reply STOP to opt out.",
+        f"Oakton Alert: Tuition, fees, EZ Pay, and refund info: {config.PUBLIC_TUITION_FEES_URL} "
+        f"Payment schedules: {config.PUBLIC_PAYMENT_OPTIONS_URL}. "
+        f"To pay or view your bill, log in at {config.MY_OAKTON_URL}. Reply STOP to opt out.",
     ),
     (
         "cant_pay_need_time",
@@ -39,7 +41,9 @@ _INTENT_SPECS = [
             r"\bpayment\s+plan",
             r"\bcan\s+not\s+pay",
         ],
-        f"Oakton Alert: You can set up an installment plan at {config.MY_OAKTON_URL}. If you can't attend, visit {config.WITHDRAWAL_INFO} to avoid fees. Reply STOP to opt out.",
+        f"Oakton Alert: EZ Pay and payment plan info: {config.PUBLIC_PAYMENT_OPTIONS_URL}. "
+        f"Enroll in myOakton: {config.MY_OAKTON_URL}. "
+        f"If you can't attend, official withdrawal information can be found here: {config.PUBLIC_WITHDRAWAL_URL}. Reply STOP to opt out.",
     ),
     (
         "withdraw_drop_safe_removal",
@@ -51,7 +55,9 @@ _INTENT_SPECS = [
             r"\bsafe\s+removal",
             r"\bwithdrawal\s+form",
         ],
-        f"Oakton Alert: To withdraw and avoid fees, visit {config.WITHDRAWAL_INFO}. That avoids being dropped for non-payment. Reply STOP to opt out.",
+        f"Oakton Alert: Withdrawal policy: {config.PUBLIC_WITHDRAWAL_URL}. "
+        f"You can withdraw online via myOakton when applicable: {config.MY_OAKTON_URL}. "
+        "Reply STOP to opt out.",
     ),
     (
         "when_deadline",
@@ -61,7 +67,8 @@ _INTENT_SPECS = [
             r"\blast\s+day\s+to\s+pay",
             r"\bpayment\s+deadline",
         ],
-        f"Oakton Alert: Summer payment deadline: {config.DEFAULT_DEADLINE_TEXT} Review balance at {config.MY_OAKTON_URL}. Reply STOP to opt out.",
+        f"Oakton Alert: {config.DEFAULT_DEADLINE_TEXT} "
+        f"View your bill after login: {config.MY_OAKTON_URL}. Reply STOP to opt out.",
     ),
     (
         "what_if_dropped",
@@ -70,7 +77,9 @@ _INTENT_SPECS = [
             r"\blose\s+my\s+seat",
             r"\bwhat\s+happens\s+if\s+(i'?m\s+)?dropped",
         ],
-        "Oakton Alert: Pay by the deadline to keep your seat. If you don't pay, you may be dropped. Withdraw by the deadline to avoid fees. Reply STOP to opt out.",
+        f"Oakton Alert: Pay by the deadline to keep your seat. "
+        f"Details: {config.PUBLIC_PAYMENT_OPTIONS_URL}. "
+        "If you can't attend, withdraw by the refund deadline. Reply STOP to opt out.",
     ),
     (
         "balance_how_much",
@@ -80,7 +89,8 @@ _INTENT_SPECS = [
             r"\bwhat\s+do\s+i\s+owe",
             r"\bmy\s+balance",
         ],
-        f"Oakton Alert: Check your balance at {config.MY_OAKTON_URL}. Reply STOP to opt out.",
+        f"Oakton Alert: Your account balance is only in myOakton after login: {config.MY_OAKTON_URL}. "
+        f"Published tuition rates are here: {config.PUBLIC_TUITION_FEES_URL}. Reply STOP to opt out.",
     ),
     (
         "refund_withdrawal_policy",
@@ -89,7 +99,82 @@ _INTENT_SPECS = [
             r"\bwithdrawal\s+policy",
             r"\brefund\s+policy",
         ],
-        f"Oakton Alert: Withdraw by the deadline for refund eligibility. For details, check {config.MY_OAKTON_URL} or contact the Cashier's Office. Reply STOP to opt out.",
+        f"Oakton Alert: Refund schedule and tuition info: {config.PUBLIC_TUITION_FEES_URL}. "
+        f"Withdrawal: {config.PUBLIC_WITHDRAWAL_URL}. "
+        "Contact the Cashier's Office with questions. Reply STOP to opt out.",
+    ),
+    (
+        "registration_holds",
+        [
+            r"\bregistration\s+(open|opens|dates)",
+            r"\bwhen\s+(can\s+i\s+)?register",
+            r"\bhold\b",
+            r"\b(have|got)\s+a\s+hold",
+            r"\bcan'?t\s+register",
+            r"\bwhy\s+can'?t\s+i\s+register",
+            r"\bclear\s+(my\s+)?hold",
+        ],
+        messages.REGISTRATION_HOLDS_RESPONSE,
+    ),
+    (
+        "financial_aid",
+        [
+            r"\bfinancial\s+aid",
+            r"\b(aid|disbursement|disburse)\b",
+            r"\bwhen\s+does\s+(aid|financial)",
+            r"\baid\s+(pay|cover)",
+            r"\b(my\s+)?aid\s+hasn'?t",
+            r"\bwill\s+aid\s+pay",
+        ],
+        messages.FINANCIAL_AID_RESPONSE,
+    ),
+    (
+        "contact_human",
+        [
+            r"\bwho\s+do\s+i\s+call",
+            r"\b(cashier|office)\s+(number|phone)",
+            r"\b(office\s+)?hours",
+            r"\btalk\s+to\s+(a\s+)?(person|someone)",
+            r"\b(human|representative)\b",
+            r"\bcontact\s+(cashier|office)",
+            r"\bphone\s+number",
+            r"\bcall\s+someone",
+        ],
+        messages.CONTACT_HUMAN_RESPONSE,
+    ),
+    (
+        "already_paid",
+        [
+            r"\b(i\s+)?already\s+paid",
+            r"\bi\s+paid\s+(already|yesterday)",
+            r"\bpayment\s+(didn'?t\s+go\s+through|not\s+showing)",
+            r"\bpaid\s+but\s+(still|not)",
+            r"\b(my\s+)?payment\s+didn'?t",
+        ],
+        messages.ALREADY_PAID_RESPONSE,
+    ),
+    (
+        "what_is_oakton_alert",
+        [
+            r"\bwhat\s+is\s+(oakton\s+)?alert",
+            r"\bwhy\s+am\s+i\s+getting\s+this",
+            r"\b(i\s+)?didn'?t\s+sign\s+up",
+            r"\bwhat\s+is\s+this\s+(number|service|text)",
+            r"\bwhy\s+this\s+(text|message)",
+        ],
+        messages.WHAT_IS_OAKTON_ALERT_RESPONSE,
+    ),
+    (
+        "myoakton_login",
+        [
+            r"\bcan'?t\s+log\s+in",
+            r"\b(forgot|reset)\s+password",
+            r"\b(log\s+in|login)\s+(problem|issue)",
+            r"\b(where|how)\s+do\s+i\s+(see\s+my\s+balance|check\s+balance)\s+(on\s+the\s+)?(site|web)",
+            r"\bmy\.?oakton",
+            r"\b(access|log\s+into)\s+my\.?oakton",
+        ],
+        messages.MYOAKTON_LOGIN_RESPONSE,
     ),
 ]
 
