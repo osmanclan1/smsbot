@@ -1,0 +1,15 @@
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "pilot-stack"
+resolve_s3 = true
+s3_prefix = "pilot-stack"
+region = "us-east-1"
+profile = "rise-admin4"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "TelnyxPhoneNumber=\"+18334209112\" TelnyxMessagingProfileId=\"0291b3ff-fae0-5e42-bebd-ac6859b9266f\" OaktonAlertDeadlineText=\"Check my.oakton.edu for the exact date.\" OaktonAlertMyOaktonUrl=\"my.oakton.edu\" OaktonAlertHelpUrl=\"oaktonalert.com\" OaktonAlertHelpEmail=\"info@oaktonalert.com\""
+image_repositories = []
+
+[default.global.parameters]
+region = "us-east-1"
