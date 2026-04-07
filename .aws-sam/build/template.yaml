@@ -1,0 +1,136 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: "Oakton Alert Pilot \u2013 single Lambda behind API Gateway (canned Q&A,\
+  \ no SQS/DynamoDB)."
+Globals:
+  Function:
+    Timeout: 30
+  Api:
+    Auth:
+      DefaultAuthorizer: NONE
+Parameters:
+  TelnyxApiKey:
+    Type: String
+    NoEcho: true
+    Description: Telnyx API key
+  TelnyxPhoneNumber:
+    Type: String
+    Description: Telnyx sender number (E.164, e.g. +1234567890)
+  TelnyxMessagingProfileId:
+    Type: String
+    Default: ''
+    Description: Optional; required for toll-free
+  TelnyxPublicKey:
+    Type: String
+    Default: ''
+    NoEcho: true
+    Description: Optional. Base64 Ed25519 public key for webhook signature verification;
+      if empty, verification is skipped
+  TriggerApiKey:
+    Type: String
+    Default: ''
+    NoEcho: true
+    Description: Optional. If set, POST /api/trigger requires Authorization Bearer
+      this value
+  OaktonAlertDeadlineText:
+    Type: String
+    Default: See payment due dates for your term at https://www.oakton.edu/paying-for-college/payment-options.php.
+    Description: Text for "when is deadline?" intent (matches pilot config.py default)
+  OaktonAlertMyOaktonUrl:
+    Type: String
+    Default: my.oakton.edu
+    Description: MyOakton host or URL (login for balance and payment)
+  OaktonAlertHelpUrl:
+    Type: String
+    Default: oaktonalert.com
+    Description: Help site URL
+  OaktonAlertHelpEmail:
+    Type: String
+    Default: info@oaktonalert.com
+    Description: Help email
+  OaktonAlertPublicTuitionFeesUrl:
+    Type: String
+    Default: https://www.oakton.edu/paying-for-college/tuition-and-fees.php
+    Description: Public tuition and fees page
+  OaktonAlertPublicPaymentOptionsUrl:
+    Type: String
+    Default: https://www.oakton.edu/paying-for-college/payment-options.php
+    Description: Public payment schedules and EZ Pay page
+  OaktonAlertPublicFinancialAidUrl:
+    Type: String
+    Default: https://www.oakton.edu/paying-for-college/financial-aid/index.php
+    Description: Public financial aid overview
+  OaktonAlertPublicWithdrawalUrl:
+    Type: String
+    Default: https://www.oakton.edu/admissions/withdrawal-from-classes.php
+    Description: Public withdrawal policy page
+  OaktonAlertPublicRegisterForClassesUrl:
+    Type: String
+    Default: https://www.oakton.edu/admissions/register-for-classes.php
+    Description: Public registration information page
+Resources:
+  PilotOaktonAlertApi:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: smsbot-pilot-oakton-alert-api
+      CodeUri: PilotOaktonAlertApi
+      Handler: main.handler
+      Runtime: python3.12
+      MemorySize: 256
+      Environment:
+        Variables:
+          TELNYX_API_KEY:
+            Ref: TelnyxApiKey
+          TELNYX_PHONE_NUMBER:
+            Ref: TelnyxPhoneNumber
+          TELNYX_MESSAGING_PROFILE_ID:
+            Ref: TelnyxMessagingProfileId
+          TELNYX_PUBLIC_KEY:
+            Ref: TelnyxPublicKey
+          TRIGGER_API_KEY:
+            Ref: TriggerApiKey
+          OAKTON_ALERT_DEADLINE_TEXT:
+            Ref: OaktonAlertDeadlineText
+          OAKTON_ALERT_MY_OAKTON_URL:
+            Ref: OaktonAlertMyOaktonUrl
+          OAKTON_ALERT_HELP_URL:
+            Ref: OaktonAlertHelpUrl
+          OAKTON_ALERT_HELP_EMAIL:
+            Ref: OaktonAlertHelpEmail
+          OAKTON_ALERT_PUBLIC_TUITION_FEES_URL:
+            Ref: OaktonAlertPublicTuitionFeesUrl
+          OAKTON_ALERT_PUBLIC_PAYMENT_OPTIONS_URL:
+            Ref: OaktonAlertPublicPaymentOptionsUrl
+          OAKTON_ALERT_PUBLIC_FINANCIAL_AID_URL:
+            Ref: OaktonAlertPublicFinancialAidUrl
+          OAKTON_ALERT_PUBLIC_WITHDRAWAL_URL:
+            Ref: OaktonAlertPublicWithdrawalUrl
+          OAKTON_ALERT_PUBLIC_REGISTER_FOR_CLASSES_URL:
+            Ref: OaktonAlertPublicRegisterForClassesUrl
+      Events:
+        ApiRoot:
+          Type: Api
+          Properties:
+            Path: /
+            Method: ANY
+        ApiProxy:
+          Type: Api
+          Properties:
+            Path: /{proxy+}
+            Method: ANY
+    Metadata:
+      SamResourceId: PilotOaktonAlertApi
+Outputs:
+  ApiUrl:
+    Description: API Gateway base URL
+    Value:
+      Fn::Sub: https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/
+  WebhookUrl:
+    Description: Telnyx webhook URL (set this in Telnyx dashboard)
+    Value:
+      Fn::Sub: https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/api/sms/webhook
+  TriggerUrl:
+    Description: Trigger endpoint (POST with JSON body; add Authorization Bearer if
+      TRIGGER_API_KEY is set)
+    Value:
+      Fn::Sub: https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/api/trigger
