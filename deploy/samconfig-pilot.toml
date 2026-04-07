@@ -1,0 +1,33 @@
+# Oakton Alert pilot – deploy from repo root:
+#   sam build -t deploy/template-pilot.yaml
+#   sam deploy -t deploy/template-pilot.yaml --config-file deploy/samconfig-pilot.toml
+#
+# First-time / guided (creates samconfig entries):
+#   sam deploy -t deploy/template-pilot.yaml --guided
+#
+# Required parameters: TelnyxApiKey, TelnyxPhoneNumber
+# Optional: TelnyxMessagingProfileId, TelnyxPublicKey, TriggerApiKey, OaktonAlert* (see template-pilot.yaml)
+#
+# Example (replace secrets and phone):
+#   sam deploy -t deploy/template-pilot.yaml --config-file deploy/samconfig-pilot.toml \
+#     --parameter-overrides \
+#     TelnyxApiKey=KEYHERE \
+#     TelnyxPhoneNumber=+15551234567 \
+#     TriggerApiKey=your-random-trigger-secret
+version = 0.1
+
+[default.global.parameters]
+stack_name = "smsbot-pilot-stack"
+region = "us-east-1"
+
+[default.build.parameters]
+cached = true
+parallel = true
+
+[default.deploy.parameters]
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = false
+resolve_s3 = true
+region = "us-east-1"
+s3_prefix = "smsbot-pilot-stack"
+# deploy/deploy-pilot.sh passes --parameter-overrides from .env (do not commit secrets here).
