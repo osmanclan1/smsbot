@@ -1,0 +1,33 @@
+flowchart TB
+  subgraph campus [Oakton_campus]
+    Export[Roster_export_CSV]
+    SFTP[SFTP_or_Transfer_to_S3]
+  end
+  subgraph aws [AWS]
+    S3[S3_incoming_prefix]
+    Ingest[Lambda_ingest]
+    Q[SQS_send_queue]
+    Sender[Lambda_sender]
+    DDB[DynamoDB_PilotV1Table]
+    APIGW[API_Gateway]
+    API[Lambda_API_FastAPI]
+    CW[CloudWatch]
+  end
+  Telnyx[Telnyx]
+  Phones[Student_phones]
+  Export --> SFTP
+  SFTP --> S3
+  S3 --> Ingest
+  Ingest --> Q
+  Ingest --> DDB
+  Q --> Sender
+  Sender --> DDB
+  Sender --> Telnyx
+  Telnyx --> Phones
+  Telnyx --> APIGW
+  APIGW --> API
+  API --> DDB
+  API --> Telnyx
+  Ingest --> CW
+  Sender --> CW
+  API --> CW

@@ -17,7 +17,7 @@
 version = 0.1
 
 [default.global.parameters]
-stack_name = "smsbot-pilot-stack"
+stack_name = "smsbot-pilot-v1-stack"
 region = "us-east-1"
 
 [default.build.parameters]
@@ -29,5 +29,5 @@ capabilities = "CAPABILITY_IAM"
 confirm_changeset = false
 resolve_s3 = true
 region = "us-east-1"
-s3_prefix = "smsbot-pilot-stack"
+s3_prefix = "smsbot-pilot-v1-stack"
 # deploy/deploy-pilot.sh passes --parameter-overrides from .env (do not commit secrets here).
