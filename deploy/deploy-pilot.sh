@@ -59,6 +59,8 @@ PO=(
 [[ -n "${TELNYX_MESSAGING_PROFILE_ID:-}" ]] && PO+=("TelnyxMessagingProfileId=${TELNYX_MESSAGING_PROFILE_ID}")
 [[ -n "${TELNYX_PUBLIC_KEY:-}" ]] && PO+=("TelnyxPublicKey=${TELNYX_PUBLIC_KEY}")
 [[ -n "${TRIGGER_API_KEY:-}" ]] && PO+=("TriggerApiKey=${TRIGGER_API_KEY}")
+# Optional: SNS topic for CloudWatch alarms (ingest errors/throttles + sender DLQ depth)
+[[ -n "${ALARM_NOTIFICATION_TOPIC_ARN:-}" ]] && PO+=("AlarmNotificationTopicArn=${ALARM_NOTIFICATION_TOPIC_ARN}")
 
 sam deploy -t "$BUILT_TEMPLATE" \
   --config-file "$SAMCONFIG" \

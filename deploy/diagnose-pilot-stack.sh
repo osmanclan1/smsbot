@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Print CloudFormation / change-set diagnostics for smsbot-pilot-stack (us-east-1).
+# Print CloudFormation / change-set diagnostics for pilot stacks (us-east-1).
 # Usage: from repo root, after: source .env && unset AWS_ACCESS_KEY_* AWS_SESSION_TOKEN (if using SSO)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 [[ -f "$ROOT/.env" ]] && set -a && source "$ROOT/.env" && set +a
 [[ -n "${AWS_PROFILE:-}" ]] && unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN || true
 REGION="${AWS_REGION:-us-east-1}"
-STACK="${1:-smsbot-pilot-stack}"
+STACK="${1:-smsbot-pilot-v1-stack}"
 
 echo "=== sts get-caller-identity ==="
 aws sts get-caller-identity --output json

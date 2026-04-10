@@ -1,11 +1,11 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Oakton Alert Pilot – single Lambda behind API Gateway (canned Q&A, no SQS/DynamoDB).
+Description: Oakton Alert pilot v1 – API + S3 ingest + SQS sender + DynamoDB (pilot-v1 app).
 
-# Intentionally public HTTP API (Telnyx webhook + trigger). Avoids SAM "no authentication" prompts.
 Globals:
   Function:
-    Timeout: 30
+    Timeout: 60
+    MemorySize: 512
   Api:
     Auth:
       DefaultAuthorizer: NONE
@@ -68,14 +68,108 @@ Parameters:
     Type: String
     Default: 'https://www.oakton.edu/admissions/register-for-classes.php'
     Description: Public registration information page
+  CampaignDeadlineIso:
+    Type: String
+    Default: '2099-12-31T23:59:59Z'
+    Description: ISO datetime (UTC) after which roster-driven sends are blocked
+  CampaignActive:
+    Type: String
+    Default: 'true'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: When false, ingest refuses to queue sends
+  DefaultCampaignId:
+    Type: String
+    Default: default
+    Description: Campaign partition key in DynamoDB
+  DefaultTriggerType:
+    Type: String
+    Default: payment_deadline_reminder
+    Description: Default trigger template when CSV has no trigger_type column
+  DefaultReminderDays:
+    Type: String
+    Default: '3'
+    Description: Default days for payment_deadline_reminder
+  IngestMarkerTtlDays:
+    Type: String
+    Default: '30'
+    Description: TTL in days for batch metadata and ingest/send dedup markers.
+  AlarmNotificationTopicArn:
+    Type: String
+    Default: ''
+    Description: Optional SNS topic ARN for ingest + DLQ CloudWatch alarms (email/Slack/etc.).
+
+Conditions:
+  HasAlarmNotificationTopic: !Not [!Equals [!Ref AlarmNotificationTopicArn, '']]
 
 Resources:
-  PilotOaktonAlertApi:
+  PilotV1Table:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: expires_at
+        Enabled: true
+
+  PilotInboundBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # Grant ingest Lambda read only on incoming/* via bucket policy (avoids IAM->bucket Ref cycle with S3 event source).
+  PilotInboundBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref PilotInboundBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowPilotIngestReadIncoming
+            Effect: Allow
+            Principal:
+              AWS: !GetAtt PilotIngestFunctionRole.Arn
+            Action: 's3:GetObject'
+            Resource: !Sub '${PilotInboundBucket.Arn}/incoming/*'
+
+  PilotSendDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 1209600
+
+  PilotSendQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      # Guardrail: keep visibility timeout comfortably above sender timeout
+      # to reduce duplicate processing during slow sends.
+      VisibilityTimeout: 180
+      MessageRetentionPeriod: 1209600
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt PilotSendDLQ.Arn
+        maxReceiveCount: 3
+
+  PilotApiFunction:
     Type: AWS::Serverless::Function
     Properties:
-      # Must be unique per account/region (older stack "pilot-stack" already uses pilot-oakton-alert-api)
-      FunctionName: smsbot-pilot-oakton-alert-api
-      CodeUri: ../pilot-oakton-alert
+      CodeUri: ../pilot-v1
       Handler: main.handler
       Runtime: python3.12
       MemorySize: 256
@@ -95,6 +189,19 @@ Resources:
           OAKTON_ALERT_PUBLIC_FINANCIAL_AID_URL: !Ref OaktonAlertPublicFinancialAidUrl
           OAKTON_ALERT_PUBLIC_WITHDRAWAL_URL: !Ref OaktonAlertPublicWithdrawalUrl
           OAKTON_ALERT_PUBLIC_REGISTER_FOR_CLASSES_URL: !Ref OaktonAlertPublicRegisterForClassesUrl
+          PILOT_DYNAMODB_TABLE: !Ref PilotV1Table
+          SEND_QUEUE_URL: !Ref PilotSendQueue
+          CAMPAIGN_DEADLINE_ISO: !Ref CampaignDeadlineIso
+          CAMPAIGN_ACTIVE: !Ref CampaignActive
+          DEFAULT_CAMPAIGN_ID: !Ref DefaultCampaignId
+          DEFAULT_TRIGGER_TYPE: !Ref DefaultTriggerType
+          DEFAULT_REMINDER_DAYS: !Ref DefaultReminderDays
+          INGEST_MARKER_TTL_DAYS: !Ref IngestMarkerTtlDays
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PilotV1Table
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt PilotSendQueue.QueueName
       Events:
         ApiRoot:
           Type: Api
@@ -107,6 +214,139 @@ Resources:
             Path: /{proxy+}
             Method: ANY
 
+  PilotIngestFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../pilot-v1
+      Handler: ingest_handler.handler
+      Runtime: python3.12
+      Timeout: 120
+      MemorySize: 512
+      Environment:
+        Variables:
+          PILOT_DYNAMODB_TABLE: !Ref PilotV1Table
+          SEND_QUEUE_URL: !Ref PilotSendQueue
+          CAMPAIGN_DEADLINE_ISO: !Ref CampaignDeadlineIso
+          CAMPAIGN_ACTIVE: !Ref CampaignActive
+          DEFAULT_CAMPAIGN_ID: !Ref DefaultCampaignId
+          DEFAULT_TRIGGER_TYPE: !Ref DefaultTriggerType
+          DEFAULT_REMINDER_DAYS: !Ref DefaultReminderDays
+          INGEST_MARKER_TTL_DAYS: !Ref IngestMarkerTtlDays
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PilotV1Table
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt PilotSendQueue.QueueName
+      Events:
+        RosterUpload:
+          Type: S3
+          Properties:
+            Bucket: !Ref PilotInboundBucket
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: incoming/
+
+  PilotSenderFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../pilot-v1
+      Handler: sender_handler.handler
+      Runtime: python3.12
+      Timeout: 45
+      MemorySize: 256
+      Environment:
+        Variables:
+          PILOT_DYNAMODB_TABLE: !Ref PilotV1Table
+          CAMPAIGN_DEADLINE_ISO: !Ref CampaignDeadlineIso
+          CAMPAIGN_ACTIVE: !Ref CampaignActive
+          DEFAULT_CAMPAIGN_ID: !Ref DefaultCampaignId
+          TELNYX_API_KEY: !Ref TelnyxApiKey
+          TELNYX_PHONE_NUMBER: !Ref TelnyxPhoneNumber
+          TELNYX_MESSAGING_PROFILE_ID: !Ref TelnyxMessagingProfileId
+          OAKTON_ALERT_DEADLINE_TEXT: !Ref OaktonAlertDeadlineText
+          OAKTON_ALERT_MY_OAKTON_URL: !Ref OaktonAlertMyOaktonUrl
+          OAKTON_ALERT_HELP_URL: !Ref OaktonAlertHelpUrl
+          OAKTON_ALERT_HELP_EMAIL: !Ref OaktonAlertHelpEmail
+          OAKTON_ALERT_PUBLIC_TUITION_FEES_URL: !Ref OaktonAlertPublicTuitionFeesUrl
+          OAKTON_ALERT_PUBLIC_PAYMENT_OPTIONS_URL: !Ref OaktonAlertPublicPaymentOptionsUrl
+          OAKTON_ALERT_PUBLIC_FINANCIAL_AID_URL: !Ref OaktonAlertPublicFinancialAidUrl
+          OAKTON_ALERT_PUBLIC_WITHDRAWAL_URL: !Ref OaktonAlertPublicWithdrawalUrl
+          OAKTON_ALERT_PUBLIC_REGISTER_FOR_CLASSES_URL: !Ref OaktonAlertPublicRegisterForClassesUrl
+          INGEST_MARKER_TTL_DAYS: !Ref IngestMarkerTtlDays
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PilotV1Table
+      Events:
+        SendQueue:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt PilotSendQueue.Arn
+            BatchSize: 5
+            MaximumBatchingWindowInSeconds: 2
+
+  PilotSendDlqAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Pilot sender DLQ has messages that need operator review.
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt PilotSendDLQ.QueueName
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAlarmNotificationTopic
+        - - !Ref AlarmNotificationTopicArn
+        - !Ref AWS::NoValue
+
+  PilotIngestErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Pilot ingest Lambda reported errors (parse failures, crashes, unhandled exceptions).
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref PilotIngestFunction
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAlarmNotificationTopic
+        - - !Ref AlarmNotificationTopicArn
+        - !Ref AWS::NoValue
+
+  PilotIngestThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Pilot ingest Lambda was throttled (concurrency or rate limits).
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref PilotIngestFunction
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAlarmNotificationTopic
+        - - !Ref AlarmNotificationTopicArn
+        - !Ref AWS::NoValue
+
 Outputs:
   ApiUrl:
     Description: API Gateway base URL
@@ -117,3 +357,15 @@ Outputs:
   TriggerUrl:
     Description: Trigger endpoint (POST with JSON body; add Authorization Bearer if TRIGGER_API_KEY is set)
     Value: !Sub 'https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/api/trigger'
+  PilotV1TableName:
+    Description: DynamoDB table for opt-outs, campaigns, batches
+    Value: !Ref PilotV1Table
+  PilotInboundBucketName:
+    Description: Upload roster CSV under incoming/ prefix
+    Value: !Ref PilotInboundBucket
+  PilotSendQueueUrl:
+    Description: SQS URL for outbound SMS jobs
+    Value: !Ref PilotSendQueue
+  PilotSendDlqUrl:
+    Description: SQS DLQ URL for failed outbound SMS jobs
+    Value: !Ref PilotSendDLQ
